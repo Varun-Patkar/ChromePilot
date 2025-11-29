@@ -1,17 +1,33 @@
-# ChromePilot
+# ChromePilot v1.0
 
-An AI-powered Chrome extension that can see and interact with web pages using Ollama's vision models.
+An AI-powered Chrome extension that can see and understand web pages using Ollama's vision models. This is a **v1 release** focused on visual understanding and Q&A - it provides intelligent insights about web pages but does not perform automated actions or control your browser.
 
 ## Features
 
 - 🎯 **Visual AI Assistant**: Uses qwen3-vl-32k model to understand and analyze web pages
 - 📸 **Screenshot Analysis**: Automatically captures and analyzes the current tab
-- 🌐 **HTML Context**: Extracts simplified HTML structure for precise element targeting
-- 💭 **Thinking Process**: Displays the model's reasoning in a collapsible section
-- 🔄 **Streaming Responses**: Real-time streaming of AI responses
-- 💾 **Conversation History**: Saves and restores chat history
+- 🌐 **HTML Context**: Extracts complete page HTML structure for comprehensive understanding
+- 💭 **Reasoning Process**: View the model's step-by-step thinking in a collapsible section
+- 🔄 **Streaming Responses**: Real-time streaming of AI responses with markdown rendering
+- 💾 **Conversation History**: Maintains context of last 4 messages for follow-up questions
 - 🎨 **Clean UI**: Beautiful sidebar interface with smooth animations
 - 🔐 **Privacy-Focused**: All processing happens locally through Ollama
+- 🎛️ **Context Controls**: Toggle screenshot and HTML context on/off as needed
+
+### What v1 Does
+- ✅ Answers questions about what it sees on web pages
+- ✅ Explains page content, layout, and elements
+- ✅ Helps you understand complex interfaces
+- ✅ Provides guidance on navigation and usage
+- ✅ Maintains conversation context for follow-ups
+
+### What v1 Does NOT Do
+- ❌ No automated actions (clicking, typing, form filling)
+- ❌ No browser control (tab switching, navigation)
+- ❌ No agentic behavior (multi-step task execution)
+- ❌ No mouse/keyboard automation
+
+This is a **read-only assistant** - it observes and advises, but you remain in full control of all browser actions.
 
 ## Prerequisites
 
@@ -47,14 +63,21 @@ An AI-powered Chrome extension that can see and interact with web pages using Ol
 
 ## Usage
 
-1. Click the ChromePilot icon in your Chrome toolbar to open the sidebar
-2. The extension will automatically:
+1. **Start Ollama** with CORS enabled (see Prerequisites)
+2. **Click the ChromePilot icon** in your Chrome toolbar to open the sidebar
+3. The extension will automatically:
    - Capture a screenshot of the current tab
-   - Extract the visible HTML structure
+   - Extract the complete HTML structure (not just visible area)
    - Send both to the AI model
-3. Ask questions about the page or request help navigating
-4. View the AI's thinking process by clicking the "Thinking..." section
-5. Click the reset button to start a new conversation
+4. **Ask questions** about the page:
+   - "What is this page about?"
+   - "Where can I find the filters?"
+   - "What options are available on this form?"
+   - "Explain what I'm looking at"
+5. **View reasoning**: Click "View Reasoning" to see the AI's step-by-step thinking
+6. **Follow-up questions**: Ask related questions - the AI remembers the last 2 exchanges
+7. **Toggle context**: Use the switches to enable/disable screenshot or HTML context
+8. **Reset**: Click the reset button to start a fresh conversation
 
 ## Technical Details
 
@@ -64,11 +87,13 @@ An AI-powered Chrome extension that can see and interact with web pages using Ol
 - HTML is simplified and truncated to reduce token usage
 
 ### HTML Processing
-The extension extracts only visible, relevant elements:
-- Removes styling, scripts, and non-interactive elements
-- Preserves IDs, classes, and semantic attributes
-- Limits content to viewport-visible elements
-- Maximum 8K characters of HTML
+The extension extracts all displayed elements from the page:
+- Captures entire page HTML, not just viewport-visible elements
+- Removes styling, scripts, SVGs, and non-interactive elements
+- Preserves IDs, classes, semantic attributes, and ARIA labels
+- Includes elements below the fold (scrolled out of view)
+- Maximum 20K characters of HTML
+- Skips CSS-hidden elements (display: none, visibility: hidden)
 
 ### Permissions
 The extension requests these permissions for future features:
@@ -80,13 +105,17 @@ The extension requests these permissions for future features:
 - `debugger`: Future mouse/keyboard control
 - `<all_urls>`: Work on any webpage
 
-## Future Enhancements
+## Future Enhancements (v2+)
 
-- Mouse and keyboard control
-- Tab switching and management
-- Form filling automation
-- Multi-step task execution
-- Custom actions and macros
+Planned features for future releases:
+- 🤖 **Agentic Behavior**: Multi-step task planning and execution
+- 🖱️ **Browser Control**: Mouse and keyboard automation
+- 📑 **Tab Management**: Switching, opening, and managing multiple tabs
+- 📝 **Form Automation**: Intelligent form filling
+- ⚙️ **Custom Actions**: User-defined macros and workflows
+- 🔗 **API Integration**: Connect with external services
+
+v1.0 focuses on understanding and advisory capabilities - action features will come in future versions.
 
 ## Troubleshooting
 
