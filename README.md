@@ -32,10 +32,30 @@ This is a **read-only assistant** - it observes and advises, but you remain in f
 ## Prerequisites
 
 1. **Ollama**: Install Ollama from [https://ollama.ai](https://ollama.ai)
-2. **Vision Model**: Pull the qwen3-vl-32k model:
+
+2. **Vision Model**: Create the qwen3-vl-32k model with extended context:
+   
+   First, pull the base model:
    ```bash
-   ollama pull qwen3-vl-32k:latest
+   ollama pull qwen3-vl:8b
    ```
+   
+   Create a file named `Modelfile` with this content:
+   ```
+   FROM qwen3-vl:8b
+   PARAMETER num_ctx 32768
+   ```
+   
+   Create the extended context model:
+   ```bash
+   ollama create qwen3-vl-32k -f Modelfile
+   ```
+   
+   Verify it was created:
+   ```bash
+   ollama list
+   ```
+
 3. **Enable CORS**: Ollama must be started with CORS enabled for Chrome extensions:
    
    **Windows:**
@@ -127,8 +147,10 @@ v1.0 focuses on understanding and advisory capabilities - action features will c
 - Restart Ollama if you forgot to set CORS initially
 
 **"Model not found"**
-- Pull the correct model: `ollama pull qwen3-vl-32k:latest`
-- Verify with: `ollama list`
+- Make sure you created the qwen3-vl-32k model (see Prerequisites)
+- First pull base model: `ollama pull qwen3-vl:8b`
+- Then create extended model: `ollama create qwen3-vl-32k -f Modelfile`
+- Verify with: `ollama list` (should show `qwen3-vl-32k:latest`)
 
 **"Request too large"**
 - The page content exceeds 32K tokens
