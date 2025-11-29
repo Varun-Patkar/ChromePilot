@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Ollama</title>
+</head>
+<body>
+    <h1>Testing Ollama Connection</h1>
+    <button onclick="testChat()">Test Chat</button>
+    <pre id="output"></pre>
+
+    <script>
+        async function testChat() {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing...\n';
+
+            try {
+                // Test 1: Tags endpoint
+                const tagsResponse = await fetch('http://localhost:11434/api/tags');
+                output.textContent += 'Tags: ' + tagsResponse.status + '\n';
+
+                // Test 2: Simple chat
+                const chatResponse = await fetch('http://localhost:11434/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: 'qwen3-vl-32k:latest',
+                        messages: [
+                            {
+                                role: 'user',
+                                content: 'Hello'
+                            }
+                        ],
+                        stream: false
+                    })
+                });
+
+                output.textContent += 'Chat: ' + chatResponse.status + '\n';
+                const data = await chatResponse.json();
+                output.textContent += 'Response: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                output.textContent += 'Error: ' + error.message + '\n' + error.stack;
+            }
+        }
+    </script>
+</body>
+</html>
