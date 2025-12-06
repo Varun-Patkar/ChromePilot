@@ -2,6 +2,21 @@
 
 An AI-powered browser automation agent using a two-LLM architecture: a reasoning model (qwen3-vl-32k) orchestrates tasks, while an executor model (llama3.1:8b) translates steps into tool calls with full context from previous actions.
 
+## Version History
+
+**v2 (Current)**: One-shot agent with plan-and-execute workflow
+- Orchestrator creates a complete plan upfront based on screenshot
+- Executor executes each step sequentially with context from previous steps
+- User approves/rejects plans before execution
+- Post-execution verification to confirm task completion
+
+**v3 (Planned)**: True iterative agent with dynamic re-evaluation
+- Agent iterates and adapts plan based on execution results
+- Re-evaluates after each step and adjusts strategy if needed
+- Asks user for clarification when encountering ambiguity
+- Similar to GitHub Copilot's conversational debugging approach
+- Handles unexpected page states and errors gracefully
+
 ## Architecture
 
 ChromePilot uses a **dual-LLM system**:
@@ -30,19 +45,22 @@ This architecture enables:
 - 🔐 **Privacy-Focused**: All processing happens locally through Ollama
 - 🎛️ **Context Controls**: Toggle screenshot and HTML context on/off
 
-### Current Capabilities
+### Current Capabilities (v2)
 - ✅ Multi-step task planning with plain English descriptions
 - ✅ Context-aware execution (steps can use previous outputs)
-- ✅ Tab management (open URLs in new tabs)
-- ✅ Element interaction (click elements by selector)
+- ✅ 10 comprehensive browser tools (click, type, select, pressKey, scroll, navigate, manageTabs, waitFor, getSchema, getHTML)
+- ✅ Accessibility tree extraction with smart element filtering
 - ✅ Visual execution feedback with status tracking
-- ✅ Approve/reject workflow with correction support
+- ✅ Approve/reject workflow with plan correction support
+- ✅ Post-execution verification with screenshot analysis
+- ✅ One-shot planning: complete plan created upfront before execution
 
-### In Development
-- 🔨 Additional tools (scroll, type, wait, extract data)
-- 🔨 Actual browser automation (currently using dummy implementations)
-- 🔨 Error recovery and retry logic
-- 🔨 More sophisticated element detection
+### Planned for v3 (Iterative Agent)
+- 🔨 Dynamic re-planning based on execution results
+- 🔨 Step-by-step evaluation and strategy adjustment
+- 🔨 Conversational clarification requests to user
+- 🔨 Error recovery with intelligent retry logic
+- 🔨 Handling unexpected page states and navigation changes
 
 ## Prerequisites
 
@@ -145,17 +163,16 @@ The extension requests these permissions for future features:
 - `debugger`: Future mouse/keyboard control
 - `<all_urls>`: Work on any webpage
 
-## Future Enhancements (v2+)
+## Future Enhancements (v3+)
 
-Planned features for future releases:
-- 🤖 **Agentic Behavior**: Multi-step task planning and execution
-- 🖱️ **Browser Control**: Mouse and keyboard automation
-- 📑 **Tab Management**: Switching, opening, and managing multiple tabs
-- 📝 **Form Automation**: Intelligent form filling
-- ⚙️ **Custom Actions**: User-defined macros and workflows
-- 🔗 **API Integration**: Connect with external services
+Planned features for v3 (Iterative Agent):
+- 🤖 **Dynamic Re-planning**: Adjust strategy based on execution outcomes
+- 🔄 **Iterative Evaluation**: Re-evaluate after each step instead of one-shot planning
+- 💬 **Conversational Clarification**: Ask user for input when encountering ambiguity
+- 🛡️ **Adaptive Error Handling**: Recover from failures with alternative approaches
+- 🎯 **Context-Aware Adaptation**: Handle unexpected page states intelligently
 
-v1.0 focuses on understanding and advisory capabilities - action features will come in future versions.
+v2 provides one-shot plan-and-execute workflow. v3 will introduce true agentic behavior with iteration and dynamic adaptation.
 
 ## Troubleshooting
 

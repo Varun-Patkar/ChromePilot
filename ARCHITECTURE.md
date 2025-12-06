@@ -1,5 +1,7 @@
 # ChromePilot Architecture
 
+[← Back to README](README.md)
+
 ## Two-LLM System
 
 ChromePilot uses a dual-LLM architecture to separate high-level reasoning from low-level execution:
