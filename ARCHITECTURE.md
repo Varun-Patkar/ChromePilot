@@ -137,31 +137,34 @@ This allows:
 ## Available Tools
 
 ### 1. click - Click Any Element
-- **Description**: Click on buttons, links, or any interactive element
+- **Description**: Click on buttons, links, or any interactive element using accessibility tree ID
 - **Inputs**: 
-  - `selector` (required): CSS selector for the element
+  - `a11yId` (required): Accessibility tree element ID from getSchema output
   - `clickType` (optional): 'single' (default), 'double', or 'right'
 - **Outputs**: `success`, `elementText`, `elementClicked`
 - **Use Cases**: Click buttons, links, expand dropdowns, trigger UI actions
+- **Note**: Must call getSchema first to get a11yId values
 
 ### 2. type - Type Text Into Fields
 - **Description**: Enter text into input fields, textareas, or contenteditable elements
 - **Inputs**:
-  - `selector` (required): CSS selector for input element
+  - `a11yId` (required): Accessibility tree element ID from getSchema output
   - `text` (required): Text to type
   - `mode` (optional): 'replace' (default) or 'append'
   - `submit` (optional): true to press Enter after typing
 - **Outputs**: `success`, `finalValue`
 - **Use Cases**: Fill forms, search bars, comment boxes, login fields
+- **Note**: Must call getSchema first to get a11yId values
 
 ### 3. select - Choose Dropdown Option
 - **Description**: Select an option from dropdown menus
 - **Inputs**:
-  - `selector` (required): CSS selector for select element
+  - `a11yId` (required): Accessibility tree element ID from getSchema output
   - `option` (required): Value to select
   - `by` (optional): 'value' (default), 'text', or 'index'
 - **Outputs**: `success`, `selectedValue`, `selectedText`
 - **Use Cases**: Country selectors, filters, form dropdowns
+- **Note**: Must call getSchema first to get a11yId values
 
 ### 4. pressKey - Keyboard Actions
 - **Description**: Simulate keyboard key presses including shortcuts
@@ -200,18 +203,94 @@ This allows:
 ### 8. waitFor - Wait for Conditions
 - **Description**: Wait for elements to appear, page to load, or network to idle
 - **Inputs**:
-  - `waitType` (required): 'element', 'navigation', or 'networkIdle'
+  - `waitType` (required): 'time', 'element', 'navigation', or 'networkIdle'
+  - `value` (required for 'time'): Milliseconds to wait
   - `selector` (required for 'element'): CSS selector to wait for
   - `timeout` (optional): Max wait time in ms (default 5000)
 - **Outputs**: `success`, `elementFound`, `timeWaited`
-- **Use Cases**: Handle dynamic content, wait for page loads, avoid race conditions
+- **Use Cases**: Handle dynamic content, wait for page loads, avoid race conditions, delay between actions
 
-### 9. getHTML - Extract HTML Content
+### 9. getSchema - Get Accessibility Tree
+- **Description**: Extract the page's accessibility tree with interactive elements
+- **Inputs**: None
+- **Outputs**: `schema` (array of elements with id, type, role, label, placeholder, text, location)
+- **Element Properties**:
+  - `id`: Unique identifier (a11yId) used for click/type/select tools
+  - `type`: HTML element type (button, input, a, etc.)
+  - `role`: ARIA role or computed semantic role
+  - `label`: Accessible name from aria-label, labels, or text content
+  - `placeholder`: Placeholder text for inputs
+  - `text`: Text content for links/buttons
+  - `location`: Bounding box coordinates
+- **Smart Filtering**: Only returns meaningful, identifiable interactive elements
+  - Skips elements with no label, placeholder, or text
+  - Reduces ~387 raw elements to ~100-150 actionable elements
+  - Filters out decorative icons, structural divs, and noise
+- **Use Cases**: 
+  - REQUIRED before click/type/select to get a11yId values
+  - Find buttons, links, inputs by their accessible labels
+  - Understand page structure and available interactions
+- **Example Output**:
+  ```json
+  {
+    "success": true,
+    "schema": [
+      {"id": 1, "type": "input", "role": "combobox", "label": "Search", "placeholder": "Search YouTube"},
+      {"id": 2, "type": "button", "role": "button", "label": "Search", "text": "Search"},
+      {"id": 18, "type": "a", "role": "link", "label": "Rick Astley - Never Gonna Give You Up", "text": "Rick Astley - Never Gonna Give You Up"}
+    ]
+  }
+  ```
+
+### 10. getHTML - Extract HTML Content
 - **Description**: Get HTML content of the entire page or specific elements
 - **Inputs**:
   - `selector` (optional): CSS selector for specific element (empty = full page)
 - **Outputs**: `html`, `success`
 - **Use Cases**: Extract data, analyze page structure, scrape content
+
+## Accessibility Tree System
+
+ChromePilot uses an **accessibility tree extraction system** instead of raw DOM selectors:
+
+### Why Accessibility Tree?
+1. **Framework-Agnostic**: Works with React, Vue, Angular, etc. that obfuscate IDs/classes
+2. **Semantic Understanding**: Uses ARIA roles and labels, matching how screen readers work
+3. **Noise Reduction**: Filters out ~70% of elements, keeping only meaningful interactive items
+4. **Stable Selection**: Based on accessible names, not fragile CSS selectors
+
+### How It Works
+1. **Extraction** (`content.js::extractAccessibilityTree()`):
+   - Queries interactive elements: `button, a, input, textarea, select, [role], [onclick], [tabindex]`
+   - Computes accessible name from: aria-label, aria-labelledby, label[for], placeholder, text content
+   - Computes role from: ARIA roles or semantic HTML tags
+   - **Critical Filter**: Skips elements with no label AND no placeholder
+   - Tags each element with `data-agent-id` attribute in DOM
+   - Returns array of ~100-150 meaningful elements
+
+2. **Element Selection** (`content.js`):
+   - Executor specifies `a11yId` from getSchema output
+   - Content script finds element by `data-agent-id="{a11yId}"`
+   - Fallback to in-memory `a11yTreeElements` map
+   - Performs action on the matched element
+
+3. **Smart Filtering Example**:
+   ```
+   Before filtering: 387 elements
+   - Many with label: null (YouTube logo, decorative icons, structural divs)
+   - Noise confuses executor's element selection
+   
+   After filtering: ~100-150 elements  
+   - Only elements with label OR placeholder
+   - All actionable, identifiable elements
+   - Clear, unambiguous for executor to match
+   ```
+
+### Executor Element Matching
+The executor uses **partial string matching** to find elements:
+- Step: "Click the fullscreen button" → Extract: "fullscreen" → Find: label contains "Full screen"
+- Step: "Type in search box" → Extract: "search" → Find: role="combobox" AND label contains "Search"
+- Step: "Click Rick Astley video" → Extract: "Rick Astley" → Find: label contains "Rick Astley"
 
 ### Context Management
 - **Screenshot Capture**: Static capture at start of each message (if toggle enabled)
