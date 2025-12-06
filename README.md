@@ -1,39 +1,54 @@
-# ChromePilot v1.0
+# ChromePilot
 
-An AI-powered Chrome extension that can see and understand web pages using Ollama's vision models. This is a **v1 release** focused on visual understanding and Q&A - it provides intelligent insights about web pages but does not perform automated actions or control your browser.
+An AI-powered browser automation agent using a two-LLM architecture: a reasoning model (qwen3-vl-32k) orchestrates tasks, while an executor model (llama3.1:8b) translates steps into tool calls with full context from previous actions.
+
+## Architecture
+
+ChromePilot uses a **dual-LLM system**:
+- **Orchestrator** (qwen3-vl-32k): Vision-enabled reasoning model that sees your page and creates plain English step-by-step plans
+- **Executor** (llama3.1:8b): Fast, lightweight model that translates each step into specific tool calls with access to previous step outputs
+
+This architecture enables:
+- Steps can reference previous outputs (e.g., "Click the first link from the search results")
+- Reasoning model focuses on high-level planning without tool syntax
+- Executor model has full context of execution history for each step
+
+**→ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed explanation with examples and flow diagrams**
 
 ## Features
 
-- 🎯 **Visual AI Assistant**: Uses qwen3-vl-32k model to understand and analyze web pages
+- 🎯 **Visual AI Agent**: Sees and understands web pages using vision models
+- 🔄 **Two-Stage Execution**: Orchestrator plans, executor executes with context
 - 📸 **Screenshot Analysis**: Automatically captures and analyzes the current tab
-- 🌐 **HTML Context**: Extracts complete page HTML structure for comprehensive understanding
-- 💭 **Reasoning Process**: View the model's step-by-step thinking in a collapsible section
+- 🌐 **HTML Context**: Extracts complete page HTML structure
+- 💭 **Reasoning Process**: View the orchestrator's step-by-step thinking
 - 🔄 **Streaming Responses**: Real-time streaming of AI responses with markdown rendering
-- 💾 **Conversation History**: Maintains context of last 4 messages for follow-up questions
+- 📊 **Execution Tracking**: See each step's status, inputs, and outputs
+- ↕️ **Collapsible Plans**: Expand/collapse plan details and execution history
+- 💾 **Conversation History**: Maintains context of last 4 messages
 - 🎨 **Clean UI**: Beautiful sidebar interface with smooth animations
 - 🔐 **Privacy-Focused**: All processing happens locally through Ollama
-- 🎛️ **Context Controls**: Toggle screenshot and HTML context on/off as needed
+- 🎛️ **Context Controls**: Toggle screenshot and HTML context on/off
 
-### What v1 Does
-- ✅ Answers questions about what it sees on web pages
-- ✅ Explains page content, layout, and elements
-- ✅ Helps you understand complex interfaces
-- ✅ Provides guidance on navigation and usage
-- ✅ Maintains conversation context for follow-ups
+### Current Capabilities
+- ✅ Multi-step task planning with plain English descriptions
+- ✅ Context-aware execution (steps can use previous outputs)
+- ✅ Tab management (open URLs in new tabs)
+- ✅ Element interaction (click elements by selector)
+- ✅ Visual execution feedback with status tracking
+- ✅ Approve/reject workflow with correction support
 
-### What v1 Does NOT Do
-- ❌ No automated actions (clicking, typing, form filling)
-- ❌ No browser control (tab switching, navigation)
-- ❌ No agentic behavior (multi-step task execution)
-- ❌ No mouse/keyboard automation
-
-This is a **read-only assistant** - it observes and advises, but you remain in full control of all browser actions.
+### In Development
+- 🔨 Additional tools (scroll, type, wait, extract data)
+- 🔨 Actual browser automation (currently using dummy implementations)
+- 🔨 Error recovery and retry logic
+- 🔨 More sophisticated element detection
 
 ## Prerequisites
 
 1. **Ollama**: Install Ollama from [https://ollama.ai](https://ollama.ai)
 
-2. **Vision Model**: Create the qwen3-vl-32k model with extended context:
+2. **Orchestrator Model**: Create the qwen3-vl-32k model with extended context:
    
    First, pull the base model:
    ```bash
@@ -56,7 +71,12 @@ This is a **read-only assistant** - it observes and advises, but you remain in f
    ollama list
    ```
 
-3. **Enable CORS**: Ollama must be started with CORS enabled for Chrome extensions:
+3. **Executor Model**: Pull the llama3.1:8b model for fast step execution:
+   ```bash
+   ollama pull llama3.1:8b
+   ```
+
+4. **Enable CORS**: Ollama must be started with CORS enabled for Chrome extensions:
    
    **Windows:**
    ```cmd

@@ -46,6 +46,37 @@ body {
   animation: slideInLeft 0.5s ease;
 }
 
+.scroll-to-bottom-btn {
+  position: fixed;
+  bottom: 120px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: all 0.3s ease;
+  animation: fadeIn 0.3s ease;
+}
+
+.scroll-to-bottom-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6);
+}
+
+.scroll-to-bottom-btn:active {
+  transform: scale(0.95);
+}
+
 .context-controls {
   display: flex;
   gap: 20px;
@@ -329,8 +360,9 @@ body {
 }
 
 .thinking-section {
-  margin-top: 8px;
-  margin-bottom: 8px;
+  margin: 16px 0;
+  clear: both;
+  width: 100%;
 }
 
 .thinking-header {
@@ -600,4 +632,295 @@ body {
   border-radius: 8px;
   margin-bottom: 16px;
   animation: slideInUp 0.3s ease;
+}
+
+/* Plan UI */
+.plan-container {
+  margin-top: 12px;
+  background: #f8f9ff;
+  border: 2px solid #667eea;
+  border-radius: 12px;
+  padding: 16px;
+  animation: slideInUp 0.4s ease;
+}
+
+.plan-header {
+  font-weight: 600;
+  color: #667eea;
+  margin-bottom: 12px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.plan-toggle {
+  font-size: 12px;
+  transition: transform 0.3s ease;
+}
+
+.plan-toggle.expanded {
+  transform: rotate(0deg);
+}
+
+.plan-title {
+  flex: 1;
+}
+
+.plan-title::before {
+  content: "📋 ";
+  font-size: 18px;
+}
+
+.plan-status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #f0f0f0;
+  color: #666;
+}
+
+.plan-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  transition: max-height 0.3s ease;
+  padding-right: 4px;
+}
+
+.plan-steps::-webkit-scrollbar {
+  width: 6px;
+}
+
+.plan-steps::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.plan-steps::-webkit-scrollbar-thumb {
+  background: #667eea;
+  border-radius: 3px;
+}
+
+.plan-steps::-webkit-scrollbar-thumb:hover {
+  background: #5568d3;
+}
+
+.plan-steps.expanded {
+  max-height: 500px;
+}
+
+.plan-step {
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  border-left: 3px solid #667eea;
+  animation: slideInLeft 0.3s ease;
+  animation-fill-mode: both;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  transition: all 0.3s ease;
+}
+
+.plan-step:nth-child(1) { animation-delay: 0.1s; }
+.plan-step:nth-child(2) { animation-delay: 0.2s; }
+.plan-step:nth-child(3) { animation-delay: 0.3s; }
+.plan-step:nth-child(4) { animation-delay: 0.4s; }
+.plan-step:nth-child(5) { animation-delay: 0.5s; }
+
+.plan-step-number {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  background: #667eea;
+  color: white;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 24px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: background 0.3s ease;
+}
+
+.plan-step-description {
+  font-weight: 500;
+  color: #333;
+  flex: 1;
+}
+
+.plan-step-output {
+  width: 100%;
+  margin-left: 32px;
+  margin-top: 8px;
+  padding: 8px;
+  background: #f9f9f9;
+  border-left: 2px solid #2196F3;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  color: #555;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.plan-step-output::-webkit-scrollbar {
+  width: 6px;
+}
+
+.plan-step-output::-webkit-scrollbar-track {
+  background: #e8e8e8;
+  border-radius: 3px;
+}
+
+.plan-step-output::-webkit-scrollbar-thumb {
+  background: #2196F3;
+  border-radius: 3px;
+}
+
+.plan-step-output::-webkit-scrollbar-thumb:hover {
+  background: #1976D2;
+}
+
+.plan-step-status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #f0f0f0;
+  color: #666;
+  white-space: nowrap;
+}
+
+.plan-step-params {
+  color: #666;
+  font-size: 13px;
+  font-family: 'Courier New', monospace;
+  background: #f5f5f5;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+  width: 100%;
+  margin-left: 32px;
+}
+
+.plan-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.plan-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plan-btn-approve {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: white;
+}
+
+.plan-btn-approve:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.plan-btn-reject {
+  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+  color: white;
+}
+
+.plan-btn-reject:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+}
+
+.plan-btn:active {
+  transform: translateY(0);
+}
+
+.plan-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.correction-prompt {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  animation: slideInUp 0.3s ease;
+}
+
+.correction-prompt p {
+  margin: 0 0 8px 0;
+  color: #856404;
+  font-weight: 600;
+}
+
+.loader-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: #667eea;
+}
+
+.loader-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e0e0e0;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.centered-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  margin: 16px auto;
+  animation: fadeIn 0.3s ease;
+}
+
+.centered-loader .loader-spinner {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+
+.centered-loader .loader-text {
+  color: #667eea;
+  font-size: 14px;
+  font-weight: 500;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
