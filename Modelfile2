@@ -1,0 +1,2 @@
+FROM llama3.1-8b-32k:latest
+PARAMETER num_ctx 32768

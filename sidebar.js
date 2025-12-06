@@ -8,7 +8,7 @@ const statusBar = document.getElementById('statusBar');
 
 const OLLAMA_URL = 'http://localhost:11434';
 const ORCHESTRATOR_MODEL = 'qwen3-vl-32k:latest'; // Reasoning model for plan generation
-const EXECUTOR_MODEL = 'llama3.1:8b'; // Fast execution model
+const EXECUTOR_MODEL = 'llama3.1-8b-32k:latest'; // Fast execution model
 const MAX_TOKENS = 32000; // Leave some buffer from 32K limit
 
 let conversationHistory = [];
@@ -24,6 +24,7 @@ let failedStepIndex = -1;
 let executionHistory = [];
 let stopGenerationRequested = false;
 let activeStreamPort = null;
+let isAutoScrolling = false;
 
 // Available tools definition with input/output specs
 const AVAILABLE_TOOLS = [
@@ -185,14 +186,29 @@ function setupEventListeners() {
   scrollToBottomBtn.innerHTML = '↓';
   scrollToBottomBtn.style.display = 'none';
   scrollToBottomBtn.addEventListener('click', () => {
+    isAutoScrolling = true;
     chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
   });
   document.querySelector('.container').appendChild(scrollToBottomBtn);
 
-  // Add scroll listener to show/hide button
+  // Add scroll listener to show/hide button and detect manual scroll
+  let lastScrollTop = chatContainer.scrollTop;
   chatContainer.addEventListener('scroll', () => {
     const isAtBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 50;
+    
+    // If user scrolls up manually, disable auto-scroll
+    if (chatContainer.scrollTop < lastScrollTop && !isAtBottom) {
+      isAutoScrolling = false;
+    }
+    lastScrollTop = chatContainer.scrollTop;
+    
+    // Show/hide button based on position
     scrollToBottomBtn.style.display = isAtBottom ? 'none' : 'flex';
+    
+    // If at bottom, enable auto-scroll
+    if (isAtBottom) {
+      isAutoScrolling = true;
+    }
   });
 }
 
@@ -212,7 +228,7 @@ async function checkOllamaConnection() {
         const modelNames = response.models.filter(m => m.includes('qwen') || m.includes('llama')).join(', ');
         updateStatus('Connected to Ollama (' + modelNames + ')', 'success');
       } else {
-        updateStatus('Warning: Required models (qwen3-vl-32k, llama3.1:8b) not found in Ollama', 'error');
+        updateStatus('Warning: Required models (qwen3-vl-32k, llama3.1-8b-32k:latest) not found in Ollama', 'error');
       }
     } else {
       updateStatus('Warning: Cannot connect to Ollama. Make sure it\'s running on localhost:11434', 'error');
@@ -867,17 +883,36 @@ async function executeStep(stepDescription, stepIndex, executionHistory) {
   console.log(`Executing step ${stepIndex + 1}:`, stepDescription);
   
   // Build context from previous executions
+  // Find the index of the last getSchema call
+  let lastSchemaIndex = -1;
+  for (let i = executionHistory.length - 1; i >= 0; i--) {
+    if (executionHistory[i].tool === 'getSchema') {
+      lastSchemaIndex = i;
+      break;
+    }
+  }
+  
   let contextPrompt = 'Previous step outputs:\n';
   executionHistory.forEach((exec, i) => {
     contextPrompt += `Step ${i + 1}: ${exec.description}\n`;
     contextPrompt += `  Tool: ${exec.tool}\n`;
     contextPrompt += `  Inputs: ${JSON.stringify(exec.inputs)}\n`;
     
-    // For schema outputs, show ALL elements (since we filtered to only meaningful ones)
     let outputsStr = JSON.stringify(exec.outputs);
+    
+    // For schema outputs: only show FULL schema for the LATEST getSchema call
     if (exec.tool === 'getSchema' && exec.outputs.schema && Array.isArray(exec.outputs.schema)) {
-      // Show full schema - it's already filtered to ~100-150 meaningful elements
-      outputsStr = JSON.stringify(exec.outputs);
+      if (i === lastSchemaIndex) {
+        // Latest schema - show full output (already filtered to ~100-150 elements)
+        outputsStr = JSON.stringify(exec.outputs);
+      } else {
+        // Older schema - replace with placeholder to save tokens
+        const schemaCount = exec.outputs.schema.length;
+        outputsStr = JSON.stringify({
+          success: exec.outputs.success,
+          schema: `...[${schemaCount} elements - see Step ${lastSchemaIndex + 1} for current schema]`
+        });
+      }
     } else if (outputsStr.length > 2000) {
       outputsStr = outputsStr.substring(0, 2000) + '...[truncated]';
     }
@@ -930,7 +965,7 @@ Step: ${stepDescription}
 Translate this step to a tool call. Output JSON only.`;
 
   try {
-    // Call executor model (llama3.1:8b)
+    // Call executor model (llama3.1-8b-32k:latest)
     const response = await chrome.runtime.sendMessage({
       action: 'executeWithModel',
       model: EXECUTOR_MODEL,
@@ -1366,7 +1401,9 @@ function addErrorToUI(errorMessage) {
 }
 
 function scrollToBottom() {
-  chatContainer.scrollTop = chatContainer.scrollHeight;
+  if (isAutoScrolling) {
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
 }
 
 function showCenteredLoader(message) {
@@ -1390,7 +1427,26 @@ function handleReset() {
   if (isProcessing) return;
   
   if (confirm('Are you sure you want to reset the conversation?')) {
+    // Clear all conversation and execution state
     conversationHistory = [];
+    currentPlan = null;
+    currentPlanMessage = null;
+    isAwaitingApproval = false;
+    rejectionCount = 0;
+    lastPromptData = null;
+    retryCount = 0;
+    failedStepIndex = -1;
+    executionHistory = [];
+    stopGenerationRequested = false;
+    isAutoScrolling = true; // Default to auto-scroll on reset
+    
+    // Disconnect any active stream
+    if (activeStreamPort) {
+      activeStreamPort.disconnect();
+      activeStreamPort = null;
+    }
+    
+    // Reset UI
     chatContainer.innerHTML = `
       <div class="welcome-message">
         <img src="icon.png" alt="ChromePilot" class="welcome-logo">
@@ -1398,6 +1454,12 @@ function handleReset() {
         <p>I can see your screen and help you navigate the web. Ask me anything!</p>
       </div>
     `;
+    
+    // Re-enable input
+    sendBtn.disabled = false;
+    userInput.disabled = false;
+    userInput.placeholder = 'Ask me anything about this page...';
+    
     saveConversationHistory();
     updateStatus('Conversation reset', 'success');
   }

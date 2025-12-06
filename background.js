@@ -80,7 +80,7 @@ async function handleCheckOllama(sendResponse) {
       );
       const hasExecutor = data.models.some(m => 
         m.name.includes('llama3.1') || 
-        m.name === 'llama3.1:8b'
+        m.name === 'llama3.1-8b-32k:latest'
       );
       sendResponse({ 
         connected: true, 
@@ -88,7 +88,7 @@ async function handleCheckOllama(sendResponse) {
         models: data.models.map(m => m.name),
         missingModels: [
           ...(!hasOrchestrator ? ['qwen3-vl-32k:latest'] : []),
-          ...(!hasExecutor ? ['llama3.1:8b'] : [])
+          ...(!hasExecutor ? ['llama3.1-8b-32k:latest'] : [])
         ]
       });
     } else {
@@ -353,7 +353,7 @@ async function handleCaptureTab(sendResponse) {
   }
 }
 
-// Handle executor model calls (llama3.1:8b) for tool execution
+// Handle executor model calls (llama3.1-8b-32k:latest) for tool execution
 async function handleExecuteWithModel(request, sendResponse) {
   const { model, prompt } = request;
   

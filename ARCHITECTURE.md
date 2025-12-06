@@ -23,7 +23,7 @@ ChromePilot uses a dual-LLM architecture to separate high-level reasoning from l
   }
   ```
 
-### Executor: llama3.1:8b (Execution Model)
+### Executor: llama3.1-8b-32k:latest (Execution Model)
 - **Role**: Translate steps into tool calls
 - **Input**: Step description + Execution history (previous inputs/outputs)
 - **Output**: Tool name + Parameters
@@ -51,7 +51,7 @@ Steps can reference previous outputs:
 
 ### 4. Efficiency
 - Orchestrator runs once with vision (expensive)
-- Executor runs per-step without vision (fast, llama3.1:8b is lightweight)
+- Executor runs per-step without vision (fast, llama3.1-8b-32k:latest is lightweight)
 
 ## Execution Flow
 
@@ -66,7 +66,7 @@ User Approves Plan
     ↓
 For each step:
     ↓
-[Executor: llama3.1:8b] ← Previous step outputs
+[Executor: llama3.1-8b-32k:latest] ← Previous step outputs
     ↓
 Tool Call (name + params)
     ↓
@@ -295,7 +295,7 @@ The executor uses **partial string matching** to find elements:
 ### Context Management
 - **Screenshot Capture**: Static capture at start of each message (if toggle enabled)
   - Captured once per user message and sent to orchestrator (vision model)
-  - NOT available as a tool since executor model (llama3.1:8b) is text-only
+  - NOT available as a tool since executor model (llama3.1-8b-32k:latest) is text-only
   - Only the CURRENT screenshot is sent, not historical ones
   
 - **HTML Capture**: 

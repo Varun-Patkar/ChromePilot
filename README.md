@@ -1,6 +1,6 @@
 # ChromePilot v2.0
 
-An AI-powered browser automation agent using a two-LLM architecture: a reasoning model (qwen3-vl-32k) orchestrates tasks, while an executor model (llama3.1:8b) translates steps into tool calls with full context from previous actions.
+An AI-powered browser automation agent using a two-LLM architecture: a reasoning model (qwen3-vl-32k) orchestrates tasks, while an executor model (llama3.1-8b-32k:latest) translates steps into tool calls with full context from previous actions.
 
 ## Version History
 
@@ -21,7 +21,7 @@ An AI-powered browser automation agent using a two-LLM architecture: a reasoning
 
 ChromePilot uses a **dual-LLM system**:
 - **Orchestrator** (qwen3-vl-32k): Vision-enabled reasoning model that sees your page and creates plain English step-by-step plans
-- **Executor** (llama3.1:8b): Fast, lightweight model that translates each step into specific tool calls with access to previous step outputs
+- **Executor** (llama3.1-8b-32k:latest): Fast, lightweight model that translates each step into specific tool calls with access to previous step outputs
 
 This architecture enables:
 - Steps can reference previous outputs (e.g., "Click the first link from the search results")
@@ -73,7 +73,7 @@ This architecture enables:
    ollama pull qwen3-vl:8b
    ```
    
-   Create a file named `Modelfile` with this content:
+   Create a file named `Modelfile1` with this content:
    ```
    FROM qwen3-vl:8b
    PARAMETER num_ctx 32768
@@ -81,7 +81,7 @@ This architecture enables:
    
    Create the extended context model:
    ```bash
-   ollama create qwen3-vl-32k -f Modelfile
+   ollama create qwen3-vl-32k -f Modelfile1
    ```
    
    Verify it was created:
@@ -89,9 +89,27 @@ This architecture enables:
    ollama list
    ```
 
-3. **Executor Model**: Pull the llama3.1:8b model for fast step execution:
+3. **Executor Model**: Create the llama3.1-32k model with extended context:
+   
+   First, pull the base model:
    ```bash
-   ollama pull llama3.1:8b
+   ollama pull llama3.1-8b-32k:latest
+   ```
+   
+   Create a file named `Modelfile2` with this content:
+   ```
+   FROM llama3.1-8b-32k:latest
+   PARAMETER num_ctx 32768
+   ```
+   
+   Create the extended context model:
+   ```bash
+   ollama create llama3.1-32k -f Modelfile2
+   ```
+   
+   Verify it was created:
+   ```bash
+   ollama list
    ```
 
 4. **Enable CORS**: Ollama must be started with CORS enabled for Chrome extensions:
@@ -184,10 +202,10 @@ v2 provides one-shot plan-and-execute workflow. v3 will introduce true agentic b
 - Restart Ollama if you forgot to set CORS initially
 
 **"Model not found"**
-- Make sure you created the qwen3-vl-32k model (see Prerequisites)
-- First pull base model: `ollama pull qwen3-vl:8b`
-- Then create extended model: `ollama create qwen3-vl-32k -f Modelfile`
-- Verify with: `ollama list` (should show `qwen3-vl-32k:latest`)
+- Make sure you created both models (see Prerequisites)
+- Orchestrator: `ollama pull qwen3-vl:8b` then `ollama create qwen3-vl-32k -f Modelfile1`
+- Executor: `ollama pull llama3.1-8b-32k:latest` then `ollama create llama3.1-32k -f Modelfile2`
+- Verify with: `ollama list` (should show `qwen3-vl-32k:latest` and `llama3.1-32k:latest`)
 
 **"Request too large"**
 - The page content exceeds 32K tokens
