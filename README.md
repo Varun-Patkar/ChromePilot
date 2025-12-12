@@ -1,4 +1,4 @@
-# ChromePilot v2.0
+# ChromePilot v3.0
 
 An AI-powered browser automation agent using a two-LLM architecture: a reasoning model (qwen3-vl-32k) orchestrates tasks, while an executor model (llama3.1-8b-32k:latest) translates steps into tool calls with full context from previous actions.
 
