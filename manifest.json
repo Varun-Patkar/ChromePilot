@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ChromePilot",
-  "version": "1.0.0",
-  "description": "AI-powered Chrome assistant with vision capabilities using Ollama",
+  "version": "3.0.0",
+  "description": "AI-powered Chrome assistant with fully iterative execution using Ollama",
   "icons": {
     "16": "icon.png",
     "48": "icon.png",
