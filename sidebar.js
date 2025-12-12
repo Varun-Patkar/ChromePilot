@@ -300,9 +300,11 @@ async function handleSendMessage(isCorrection = false) {
   autoResizeTextarea();
 
   try {
-    // Reset state for new goal
+    // Reset state for new goal - only set goal if not already iterating (to preserve original goal during clarifications)
     stopGenerationRequested = false;
-    currentGoal = message;
+    if (!isIterating) {
+      currentGoal = message;
+    }
     
     let tabData = { screenshot: null, html: '', url: '', title: '' };
     
@@ -344,7 +346,8 @@ async function handleSendMessage(isCorrection = false) {
     await handleAgentResponse(agentResponse);
 
     updateStatus('Ready');
-    resetUIAfterProcessing();
+    // Note: Don't call resetUIAfterProcessing here - it will be called by handleAgentResponse
+    // based on whether iteration continues or input should be re-enabled
   } catch (error) {
     console.error('Error:', error);
     
@@ -363,6 +366,20 @@ function resetUIAfterProcessing() {
   sendBtn.style.background = '';
   sendBtn.onclick = null;
   userInput.focus();
+}
+
+// Helper function to enable user input consistently
+function enableUserInput(placeholder = 'Ask me anything about this page...', focus = true) {
+  isProcessing = false;
+  sendBtn.disabled = false;
+  userInput.disabled = false;
+  sendBtn.textContent = 'Send';
+  sendBtn.style.background = '';
+  sendBtn.onclick = null;
+  userInput.placeholder = placeholder;
+  if (focus) {
+    userInput.focus();
+  }
 }
 
 async function captureCurrentTab() {
@@ -468,12 +485,18 @@ async function handleAgentResponse(responseText) {
       questionDiv.innerHTML = `<strong>❓ Question:</strong> ${response.ask_user}`;
       assistantMessageDiv.appendChild(questionDiv);
       
+      chatContainer.appendChild(assistantMessageDiv);
+      scrollToBottom();
+      
+      // Add to history
+      conversationHistory.push({
+        role: 'assistant',
+        content: response.message || response.ask_user
+      });
+      saveConversationHistory();
+      
       // Re-enable input for user response
-      isProcessing = false;
-      sendBtn.disabled = false;
-      userInput.disabled = false;
-      userInput.placeholder = 'Your answer...';
-      userInput.focus();
+      enableUserInput('Your answer...');
     } 
     // Check if agent wants to take an action
     else if (response.needs_action && response.action) {
@@ -527,11 +550,7 @@ async function handleAgentResponse(responseText) {
       saveConversationHistory();
       
       // Re-enable input
-      isProcessing = false;
-      sendBtn.disabled = false;
-      userInput.disabled = false;
-      userInput.placeholder = 'Ask me anything about this page...';
-      userInput.focus();
+      enableUserInput();
     }
     
   } catch (error) {
@@ -1057,9 +1076,10 @@ async function continueIteration() {
     // Capture current page state for re-evaluation
     const currentState = await captureCurrentTab();
     
-    // Build iteration prompt
+    // Build iteration prompt - ensure currentGoal is defined
+    const goalText = currentGoal || 'the user request';
     const { prompt, imageBase64 } = await prepareOllamaRequest(
-      `[Continue iterating on goal: ${currentGoal}]\n\nRe-evaluate the current situation based on the page state and previous actions. Decide the single next action, or determine if the goal is complete.${executionContext}`,
+      `[Continue iterating on goal: ${goalText}]\n\nRe-evaluate the current situation based on the page state and previous actions. Decide the single next action, or determine if the goal is complete.${executionContext}`,
       currentState,
       false
     );
@@ -1067,11 +1087,20 @@ async function continueIteration() {
     // Show thinking loader
     const thinkingLoader = showCenteredLoader('Deciding next action...');
     
-    // Get next decision from agent
-    const agentResponse = await streamOllamaResponse(prompt, imageBase64);
-    
-    // Handle the response (will execute next action if needed, or complete)
-    await handleAgentResponse(agentResponse);
+    try {
+      // Get next decision from agent
+      const agentResponse = await streamOllamaResponse(prompt, imageBase64);
+      
+      // Remove loader before handling response
+      removeCenteredLoader();
+      
+      // Handle the response (will execute next action if needed, or complete)
+      await handleAgentResponse(agentResponse);
+    } catch (error) {
+      // Ensure loader is removed on error
+      removeCenteredLoader();
+      throw error;
+    }
     
   } catch (error) {
     console.error('[Iterative] Error during iteration:', error);
