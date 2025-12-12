@@ -145,6 +145,8 @@ RULES:
 8. SCHEMA FIRST: For interactions, first action should be getSchema, then use results to reference elements.
 9. WAIT AFTER NAVIGATION: After opening tabs or navigating, next action should be waitFor page load.
 10. OBSERVE RESULTS: Previous action outputs are provided - use them to inform next decision.
+11. BE CONCISE: Keep reasoning brief (1-2 sentences max). Make quick, confident decisions.
+12. TRUST YOURSELF: Don't second-guess or overthink. If previous action failed, simply try the next logical alternative.
 
 Examples of iterative decisions:
 - User: "Search YouTube for cats"
@@ -524,6 +526,80 @@ async function handleAgentResponse(responseText) {
       actionDiv.dataset.action = response.action;
       assistantMessageDiv.appendChild(actionDiv);
       
+      // Add approval buttons
+      const approvalDiv = document.createElement('div');
+      approvalDiv.className = 'action-approval';
+      approvalDiv.style.marginTop = '10px';
+      approvalDiv.style.display = 'flex';
+      approvalDiv.style.gap = '10px';
+      
+      const executeBtn = document.createElement('button');
+      executeBtn.className = 'plan-btn plan-btn-approve';
+      executeBtn.style.flex = '1';
+      executeBtn.innerHTML = '✓ Execute';
+      executeBtn.onclick = async () => {
+        // Disable buttons
+        executeBtn.disabled = true;
+        skipBtn.disabled = true;
+        stopBtn.disabled = true;
+        
+        // Execute the action and continue iteration
+        await executeIterativeAction(response.action, actionDiv);
+      };
+      
+      const skipBtn = document.createElement('button');
+      skipBtn.className = 'plan-btn';
+      skipBtn.style.background = '#FF9800';
+      skipBtn.style.flex = '1';
+      skipBtn.innerHTML = '⏭️ Skip';
+      skipBtn.onclick = async () => {
+        // Disable buttons
+        executeBtn.disabled = true;
+        skipBtn.disabled = true;
+        stopBtn.disabled = true;
+        
+        // Mark as skipped
+        actionDiv.style.borderLeftColor = '#FF9800';
+        actionDiv.innerHTML = `<strong>⏭️ Skipped:</strong> ${response.action}`;
+        
+        // Add to execution history as skipped
+        executionHistory.push({
+          description: response.action,
+          tool: 'skipped',
+          inputs: {},
+          outputs: { success: false, skipped: true }
+        });
+        
+        // Continue iteration to get next action
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await continueIteration();
+      };
+      
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'plan-btn plan-btn-reject';
+      stopBtn.style.flex = '1';
+      stopBtn.innerHTML = '⏹️ Stop';
+      stopBtn.onclick = () => {
+        // Disable buttons
+        executeBtn.disabled = true;
+        skipBtn.disabled = true;
+        stopBtn.disabled = true;
+        
+        // Mark as stopped
+        actionDiv.style.borderLeftColor = '#f44336';
+        actionDiv.innerHTML = `<strong>⏹️ Stopped:</strong> Task halted by user`;
+        
+        // Stop iteration
+        isIterating = false;
+        enableUserInput('Ask me anything about this page...');
+        updateStatus('Stopped by user', 'success');
+      };
+      
+      approvalDiv.appendChild(executeBtn);
+      approvalDiv.appendChild(skipBtn);
+      approvalDiv.appendChild(stopBtn);
+      actionDiv.appendChild(approvalDiv);
+      
       chatContainer.appendChild(assistantMessageDiv);
       scrollToBottom();
       
@@ -534,8 +610,7 @@ async function handleAgentResponse(responseText) {
       });
       saveConversationHistory();
       
-      // Execute the action immediately and continue iteration
-      await executeIterativeAction(response.action, actionDiv);
+      // Note: Execution happens only when user clicks Execute button
     } 
     // No action needed (conversation mode or task complete)
     else {
