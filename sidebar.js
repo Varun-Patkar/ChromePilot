@@ -10,6 +10,7 @@ const OLLAMA_URL = 'http://localhost:11434';
 const ORCHESTRATOR_MODEL = 'qwen3-vl-32k:latest'; // Reasoning model for plan generation
 const EXECUTOR_MODEL = 'llama3.1-8b-32k:latest'; // Fast execution model
 const MAX_TOKENS = 32000; // Leave some buffer from 32K limit
+const SKIP_ACTION_DELAY_MS = 500; // Brief delay before continuing after skipping action
 
 let conversationHistory = [];
 let isProcessing = false;
@@ -533,30 +534,39 @@ async function handleAgentResponse(responseText) {
       approvalDiv.style.display = 'flex';
       approvalDiv.style.gap = '10px';
       
+      // Helper to disable all approval buttons
+      const disableApprovalButtons = (execBtn, skipBtnRef, stopBtnRef) => {
+        execBtn.disabled = true;
+        skipBtnRef.disabled = true;
+        stopBtnRef.disabled = true;
+      };
+      
       const executeBtn = document.createElement('button');
       executeBtn.className = 'plan-btn plan-btn-approve';
       executeBtn.style.flex = '1';
       executeBtn.innerHTML = '✓ Execute';
-      executeBtn.onclick = async () => {
-        // Disable buttons
-        executeBtn.disabled = true;
-        skipBtn.disabled = true;
-        stopBtn.disabled = true;
-        
-        // Execute the action and continue iteration
-        await executeIterativeAction(response.action, actionDiv);
-      };
       
       const skipBtn = document.createElement('button');
       skipBtn.className = 'plan-btn';
       skipBtn.style.background = '#FF9800';
       skipBtn.style.flex = '1';
       skipBtn.innerHTML = '⏭️ Skip';
+      
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'plan-btn plan-btn-reject';
+      stopBtn.style.flex = '1';
+      stopBtn.innerHTML = '⏹️ Stop';
+      
+      // Set up click handlers with button references
+      executeBtn.onclick = async () => {
+        disableApprovalButtons(executeBtn, skipBtn, stopBtn);
+        
+        // Execute the action and continue iteration
+        await executeIterativeAction(response.action, actionDiv);
+      };
+      
       skipBtn.onclick = async () => {
-        // Disable buttons
-        executeBtn.disabled = true;
-        skipBtn.disabled = true;
-        stopBtn.disabled = true;
+        disableApprovalButtons(executeBtn, skipBtn, stopBtn);
         
         // Mark as skipped
         actionDiv.style.borderLeftColor = '#FF9800';
@@ -571,19 +581,12 @@ async function handleAgentResponse(responseText) {
         });
         
         // Continue iteration to get next action
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, SKIP_ACTION_DELAY_MS));
         await continueIteration();
       };
       
-      const stopBtn = document.createElement('button');
-      stopBtn.className = 'plan-btn plan-btn-reject';
-      stopBtn.style.flex = '1';
-      stopBtn.innerHTML = '⏹️ Stop';
       stopBtn.onclick = () => {
-        // Disable buttons
-        executeBtn.disabled = true;
-        skipBtn.disabled = true;
-        stopBtn.disabled = true;
+        disableApprovalButtons(executeBtn, skipBtn, stopBtn);
         
         // Mark as stopped
         actionDiv.style.borderLeftColor = '#f44336';
