@@ -1,66 +1,63 @@
-# ChromePilot v2.0
+# ChromePilot v3.0
 
-An AI-powered browser automation agent using a two-LLM architecture: a reasoning model (qwen3-vl-32k) orchestrates tasks, while an executor model (llama3.1-8b-32k:latest) translates steps into tool calls with full context from previous actions.
+An AI-powered browser automation agent using a fully iterative architecture: the agent evaluates, decides, and executes one action at a time, continuously re-evaluating based on results.
 
 ## Version History
 
-**v2 (Current)**: One-shot agent with plan-and-execute workflow
+**v3 (Current)**: Fully iterative agent with dynamic decision-making
+- Agent operates in a continuous iterate → decide → act → observe loop
+- No upfront planning - decides only the single best next action at each moment
+- Re-evaluates from scratch after every action using latest context
+- Asks user for clarification when encountering ambiguity or uncertainty
+- Adapts to unexpected page states and errors in real-time
+- Handles failures gracefully by incorporating them into next decision
+
+**v2 (Previous)**: One-shot agent with plan-and-execute workflow
 - Orchestrator creates a complete plan upfront based on screenshot
 - Executor executes each step sequentially with context from previous steps
 - User approves/rejects plans before execution
 - Post-execution verification to confirm task completion
 
-**v3 (Planned)**: True iterative agent with dynamic re-evaluation
-- Agent iterates and adapts plan based on execution results
-- Re-evaluates after each step and adjusts strategy if needed
-- Asks user for clarification when encountering ambiguity
-- Similar to GitHub Copilot's conversational debugging approach
-- Handles unexpected page states and errors gracefully
-
 ## Architecture
 
-ChromePilot uses a **dual-LLM system**:
-- **Orchestrator** (qwen3-vl-32k): Vision-enabled reasoning model that sees your page and creates plain English step-by-step plans
-- **Executor** (llama3.1-8b-32k:latest): Fast, lightweight model that translates each step into specific tool calls with access to previous step outputs
+ChromePilot uses a **dual-LLM iterative system**:
+- **Decision Agent** (qwen3-vl-32k): Vision-enabled reasoning model that sees your page and decides the single next action
+- **Executor** (llama3.1-8b-32k:latest): Fast, lightweight model that translates each action into specific tool calls
 
 This architecture enables:
-- Steps can reference previous outputs (e.g., "Click the first link from the search results")
-- Reasoning model focuses on high-level planning without tool syntax
-- Executor model has full context of execution history for each step
+- **True Iteration**: Agent re-evaluates after each action, adjusting strategy based on results
+- **No Planning**: Decisions are made one at a time, not committed upfront
+- **Context Awareness**: Actions can reference previous execution outputs
+- **Dynamic Adaptation**: Handles unexpected states by reassessing from scratch
+- **User Interaction**: Asks clarifying questions when uncertain
 
 **→ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed explanation with examples and flow diagrams**
 
 ## Features
 
-- 🎯 **Visual AI Agent**: Sees and understands web pages using vision models
-- 🔄 **Two-Stage Execution**: Orchestrator plans, executor executes with context
+- 🎯 **Fully Iterative Agent**: Decides and executes one action at a time, adapting dynamically
+- 👁️ **Visual AI Agent**: Sees and understands web pages using vision models
+- 🔄 **Continuous Re-evaluation**: Reassesses situation after every action
+- 💭 **Clarification Requests**: Asks user when encountering ambiguity
 - 📸 **Screenshot Analysis**: Automatically captures and analyzes the current tab
 - 🌐 **HTML Context**: Extracts complete page HTML structure
-- 💭 **Reasoning Process**: View the orchestrator's step-by-step thinking
 - 🔄 **Streaming Responses**: Real-time streaming of AI responses with markdown rendering
-- 📊 **Execution Tracking**: See each step's status, inputs, and outputs
-- ↕️ **Collapsible Plans**: Expand/collapse plan details and execution history
-- 💾 **Conversation History**: Maintains context of last 4 messages
+- 📊 **Execution Tracking**: See each action's status, inputs, and outputs
+- 💾 **Conversation History**: Maintains context of recent exchanges
 - 🎨 **Clean UI**: Beautiful sidebar interface with smooth animations
 - 🔐 **Privacy-Focused**: All processing happens locally through Ollama
-- 🎛️ **Context Controls**: Toggle screenshot and HTML context on/off
+- 🎛️ **Context Controls**: Toggle screenshot context on/off
 
-### Current Capabilities (v2)
-- ✅ Multi-step task planning with plain English descriptions
-- ✅ Context-aware execution (steps can use previous outputs)
+### Current Capabilities (v3)
+- ✅ Iterative decision-making with single-action execution
+- ✅ Dynamic re-evaluation after each action based on results
+- ✅ Conversational clarification when uncertain
+- ✅ Adaptive error handling and recovery
+- ✅ Context-aware execution (actions use previous outputs)
 - ✅ 10 comprehensive browser tools (click, type, select, pressKey, scroll, navigate, manageTabs, waitFor, getSchema, getHTML)
 - ✅ Accessibility tree extraction with smart element filtering
 - ✅ Visual execution feedback with status tracking
-- ✅ Approve/reject workflow with plan correction support
-- ✅ Post-execution verification with screenshot analysis
-- ✅ One-shot planning: complete plan created upfront before execution
-
-### Planned for v3 (Iterative Agent)
-- 🔨 Dynamic re-planning based on execution results
-- 🔨 Step-by-step evaluation and strategy adjustment
-- 🔨 Conversational clarification requests to user
-- 🔨 Error recovery with intelligent retry logic
-- 🔨 Handling unexpected page states and navigation changes
+- ✅ Real-time adaptation to unexpected page states
 
 ## Prerequisites
 
@@ -141,19 +138,22 @@ This architecture enables:
 
 1. **Start Ollama** with CORS enabled (see Prerequisites)
 2. **Click the ChromePilot icon** in your Chrome toolbar to open the sidebar
-3. The extension will automatically:
-   - Capture a screenshot of the current tab
-   - Extract the complete HTML structure (not just visible area)
-   - Send both to the AI model
-4. **Ask questions** about the page:
-   - "What is this page about?"
-   - "Where can I find the filters?"
-   - "What options are available on this form?"
-   - "Explain what I'm looking at"
-5. **View reasoning**: Click "View Reasoning" to see the AI's step-by-step thinking
-6. **Follow-up questions**: Ask related questions - the AI remembers the last 2 exchanges
-7. **Toggle context**: Use the switches to enable/disable screenshot or HTML context
-8. **Reset**: Click the reset button to start a fresh conversation
+3. The extension will automatically capture a screenshot of the current tab
+4. **Ask the agent to perform tasks**:
+   - "Search YouTube for cats"
+   - "Fill out this form with my name John Doe"
+   - "Find and click the login button"
+   - "Navigate to the settings page"
+5. **Watch the agent work iteratively**:
+   - Agent decides one action at a time
+   - Executes the action
+   - Observes the result
+   - Re-evaluates and decides the next action
+   - Continues until goal is achieved
+6. **Answer clarifying questions** when the agent needs more information
+7. **Stop anytime** by clicking the Stop button
+8. **Toggle context**: Use the screenshot switch to enable/disable visual context
+9. **Reset**: Click the reset button to start a fresh conversation
 
 ## Technical Details
 
@@ -181,16 +181,17 @@ The extension requests these permissions for future features:
 - `debugger`: Future mouse/keyboard control
 - `<all_urls>`: Work on any webpage
 
-## Future Enhancements (v3+)
+## Future Enhancements (v4+)
 
-Planned features for v3 (Iterative Agent):
-- 🤖 **Dynamic Re-planning**: Adjust strategy based on execution outcomes
-- 🔄 **Iterative Evaluation**: Re-evaluate after each step instead of one-shot planning
-- 💬 **Conversational Clarification**: Ask user for input when encountering ambiguity
-- 🛡️ **Adaptive Error Handling**: Recover from failures with alternative approaches
-- 🎯 **Context-Aware Adaptation**: Handle unexpected page states intelligently
+Potential features for future versions:
+- 🤖 **Multi-Agent Collaboration**: Multiple specialized agents working together
+- 🧠 **Learning from Experience**: Remember successful strategies across sessions
+- 🔍 **Advanced Pattern Recognition**: Identify common UI patterns automatically
+- 🛡️ **Enhanced Safety Checks**: Warn before potentially dangerous actions
+- 🎯 **Goal Decomposition**: Better handling of complex multi-part goals
+- 📊 **Performance Metrics**: Track and optimize execution efficiency
 
-v2 provides one-shot plan-and-execute workflow. v3 will introduce true agentic behavior with iteration and dynamic adaptation.
+v3 provides fully iterative, adaptive browser automation. Future versions will build on this foundation with advanced capabilities.
 
 ## Troubleshooting
 
