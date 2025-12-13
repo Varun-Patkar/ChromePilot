@@ -1175,13 +1175,30 @@ async function continueIteration() {
     
     // Build context with execution history
     let executionContext = '';
+    
+    // Find the most recent getSchema result
+    let mostRecentSchema = null;
+    for (let i = executionHistory.length - 1; i >= 0; i--) {
+      if (executionHistory[i].tool === 'getSchema' && executionHistory[i].outputs.schema) {
+        mostRecentSchema = executionHistory[i].outputs.schema;
+        break;
+      }
+    }
+    
+    // Include the most recent schema at the top of context if available
+    if (mostRecentSchema) {
+      executionContext += '\n\nCurrent Page Schema (Interactive Elements):\n';
+      executionContext += JSON.stringify(mostRecentSchema, null, 2);
+      executionContext += '\n';
+    }
+    
     if (executionHistory.length > 0) {
-      executionContext = '\n\nPrevious actions taken:\n';
+      executionContext += '\n\nPrevious actions taken:\n';
       executionHistory.forEach((exec, i) => {
         executionContext += `${i + 1}. ${exec.description}\n`;
         executionContext += `   Tool: ${exec.tool}, Success: ${exec.outputs.success || false}\n`;
         
-        // Include relevant outputs (not full schema dumps)
+        // Include relevant outputs (skip full schema dumps in history since we show most recent at top)
         if (exec.tool === 'getSchema' && exec.outputs.schema) {
           executionContext += `   Found ${exec.outputs.schema.length} interactive elements\n`;
         } else {
