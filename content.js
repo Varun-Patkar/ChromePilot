@@ -722,13 +722,30 @@ function extractAccessibilityTree() {
     const label = name || textContent || null;
     const placeholder = el.placeholder || null;
     
-    // Special handling for important input types - always include search boxes and text inputs
-    const tag = el.tagName.toLowerCase();
-    const inputType = el.type ? el.type.toLowerCase() : '';
-    const isImportantInput = (tag === 'input' && ['search', 'text', 'email', 'password', 'tel', 'url'].includes(inputType)) ||
-                             tag === 'textarea' ||
-                             (role === 'searchbox' || role === 'textbox' || role === 'combobox');
+    // Helper function to check if element is an important input type
+    function isImportantInputType(element, elementRole) {
+      const tagName = element.tagName.toLowerCase();
+      const typeAttr = element.type ? element.type.toLowerCase() : '';
+      
+      // Important input types (text-entry fields)
+      if (tagName === 'input' && ['search', 'text', 'email', 'password', 'tel', 'url'].includes(typeAttr)) {
+        return true;
+      }
+      
+      // Always include textareas
+      if (tagName === 'textarea') {
+        return true;
+      }
+      
+      // Always include elements with text-entry roles
+      if (['searchbox', 'textbox', 'combobox'].includes(elementRole)) {
+        return true;
+      }
+      
+      return false;
+    }
     
+    const isImportantInput = isImportantInputType(el, role);
     const hasIdentification = label || placeholder || isImportantInput;
     
     if (!hasIdentification) {
