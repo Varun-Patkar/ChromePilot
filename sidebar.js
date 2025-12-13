@@ -143,11 +143,10 @@ RULES:
 5. TASK COMPLETE: When goal is achieved, set needs_action=false with completion message.
 6. ATOMIC ACTIONS: Each action must be a single, specific operation.
 7. BE SPECIFIC: Include exact URLs, text, and details in action descriptions.
-8. SCHEMA FIRST: For interactions, first action should be getSchema, then use results to reference elements.
+8. SCHEMA REQUIRED: After any page navigation (manageTabs, navigate), you MUST call getSchema before attempting interactions.
 9. WAIT AFTER NAVIGATION: After opening tabs or navigating, next action should be waitFor page load.
 10. OBSERVE RESULTS: Previous action outputs are provided - use them to inform next decision.
-11. BE CONCISE: Keep reasoning brief (1-2 sentences max). Make quick, confident decisions.
-12. TRUST YOURSELF: Don't second-guess or overthink. If previous action failed, simply try the next logical alternative.
+11. THINK CAREFULLY: Take time to choose the right tool and parameters. Ensure tool selection matches the task.
 
 Examples of iterative decisions:
 - User: "Search YouTube for cats"
@@ -1084,6 +1083,47 @@ async function executeIterativeAction(actionDescription, actionDiv) {
     actionDiv.appendChild(detailsDiv);
     
     scrollToBottom();
+    
+    // Check if we need to auto-call getSchema after page navigation
+    const navigationTools = ['manageTabs', 'navigate'];
+    const needsSchema = navigationTools.includes(execution.tool) && execution.outputs.success;
+    
+    if (needsSchema) {
+      // Automatically call getSchema after successful page navigation
+      console.log('[Iterative] Auto-calling getSchema after page navigation');
+      
+      // Small delay to let page settle
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      try {
+        // Call getSchema automatically
+        const schemaExecution = await executeStep('Get page schema to find interactive elements', executionHistory.length, executionHistory);
+        executionHistory.push(schemaExecution);
+        
+        // Show schema result in UI
+        const schemaDiv = document.createElement('div');
+        schemaDiv.className = 'next-action';
+        schemaDiv.style.background = '#f0f4ff';
+        schemaDiv.style.padding = '10px';
+        schemaDiv.style.marginTop = '8px';
+        schemaDiv.style.borderRadius = '4px';
+        schemaDiv.style.borderLeft = '4px solid #6B7FD7';
+        schemaDiv.style.fontSize = '0.9em';
+        
+        const elementsFound = schemaExecution.outputs.schema ? schemaExecution.outputs.schema.length : 0;
+        schemaDiv.innerHTML = `
+          <strong>🔍 Auto Schema:</strong> Found ${elementsFound} interactive elements on new page
+        `;
+        
+        chatContainer.appendChild(schemaDiv);
+        scrollToBottom();
+        
+        console.log(`[Iterative] Auto-schema found ${elementsFound} elements`);
+      } catch (schemaError) {
+        console.error('[Iterative] Auto-schema failed:', schemaError);
+        // Continue anyway - agent can decide to call schema manually if needed
+      }
+    }
     
     // Small delay before next iteration
     await new Promise(resolve => setTimeout(resolve, 800));
