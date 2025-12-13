@@ -133,7 +133,7 @@ Output JSON Schema:
 {
   "needs_action": true/false,
   "action": "single action description" OR null,
-  "reasoning": "brief explanation of why this is the next action",
+  "reasoning": "1-2 sentence explanation only",
   "message": "message to user",
   "ask_user": "clarifying question" OR null
 }
@@ -145,22 +145,20 @@ RULES:
 4. CONVERSATION MODE: If user is just asking questions (not requesting actions), set needs_action=false and provide answer in message.
 5. TASK COMPLETE: When goal is achieved, set needs_action=false with completion message.
 6. ATOMIC ACTIONS: Each action must be a single, specific operation.
-7. BE SPECIFIC: Include exact URLs, text, and details in action descriptions.
+7. BE SPECIFIC: Include exact URLs, text, and details in action descriptions. For opening tabs, ALWAYS include the full URL in the action.
 8. SCHEMA REQUIRED: After any page navigation (manageTabs, navigate), you MUST call getSchema before attempting interactions.
 9. WAIT AFTER NAVIGATION: After opening tabs or navigating, next action should be waitFor page load.
 10. OBSERVE RESULTS: Previous action outputs are provided - use them to inform next decision.
-11. THINK CAREFULLY: Take time to choose the right tool and parameters. Ensure tool selection matches the task.
+11. CONCISE REASONING: Keep reasoning to 1-2 sentences maximum. No lengthy explanations or circular thinking.
 
 Examples of iterative decisions:
 - User: "Search YouTube for cats"
-  → Action: "Open a new tab with URL https://www.youtube.com"
-  → After execution, observe result
-  → Next iteration action: "Wait for the page to load completely"
-  → After load, observe
-  → Next: "Get page schema to find interactive elements"
-  → After schema, observe search box in results
-  → Next: "Click the search input with id 5 from schema"
-  → And so on...
+  → Decision: {"needs_action": true, "action": "Open a new tab with URL https://www.youtube.com", "reasoning": "User wants to access YouTube in a new tab.", "message": "Opening YouTube..."}
+  → After execution, next decision: {"needs_action": true, "action": "Wait for the page to load completely", "reasoning": "Page needs to load before interaction.", "message": "Waiting for page..."}
+  → After load: {"needs_action": true, "action": "Get page schema to find interactive elements", "reasoning": "Need to identify search elements.", "message": "Analyzing page..."}
+  → After schema: {"needs_action": true, "action": "Click the search input with id 5 from schema", "reasoning": "Found search box at id 5.", "message": "Clicking search..."}
+
+CRITICAL: Keep reasoning to 1-2 sentences. Include ALL required parameters (especially URLs) in action descriptions.
 
 Known URLs: youtube.com, google.com, facebook.com, twitter.com, amazon.com`;
 
