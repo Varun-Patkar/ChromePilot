@@ -11,6 +11,9 @@ const ORCHESTRATOR_MODEL = 'qwen3-vl-32k:latest'; // Reasoning model for plan ge
 const EXECUTOR_MODEL = 'llama3.1-8b-32k:latest'; // Fast execution model
 const MAX_TOKENS = 32000; // Leave some buffer from 32K limit
 const SKIP_ACTION_DELAY_MS = 500; // Brief delay before continuing after skipping action
+const PAGE_SETTLE_DELAY_MS = 1000; // Delay for page to settle after navigation before calling schema
+const NAVIGATION_TOOLS = ['manageTabs', 'navigate']; // Tools that trigger page navigation
+const AUTO_SCHEMA_DESCRIPTION = 'Get page schema to find interactive elements'; // Description for auto-schema calls
 
 let conversationHistory = [];
 let isProcessing = false;
@@ -1085,19 +1088,18 @@ async function executeIterativeAction(actionDescription, actionDiv) {
     scrollToBottom();
     
     // Check if we need to auto-call getSchema after page navigation
-    const navigationTools = ['manageTabs', 'navigate'];
-    const needsSchema = navigationTools.includes(execution.tool) && execution.outputs.success;
+    const needsSchema = NAVIGATION_TOOLS.includes(execution.tool) && execution.outputs.success;
     
     if (needsSchema) {
       // Automatically call getSchema after successful page navigation
       console.log('[Iterative] Auto-calling getSchema after page navigation');
       
       // Small delay to let page settle
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, PAGE_SETTLE_DELAY_MS));
       
       try {
         // Call getSchema automatically
-        const schemaExecution = await executeStep('Get page schema to find interactive elements', executionHistory.length, executionHistory);
+        const schemaExecution = await executeStep(AUTO_SCHEMA_DESCRIPTION, executionHistory.length, executionHistory);
         executionHistory.push(schemaExecution);
         
         // Show schema result in UI
