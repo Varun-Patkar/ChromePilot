@@ -10,21 +10,22 @@ const OLLAMA_URL = 'http://localhost:11434';
 const ORCHESTRATOR_MODEL = 'qwen3-vl-32k:latest'; // Reasoning model for plan generation
 const EXECUTOR_MODEL = 'llama3.1-8b-32k:latest'; // Fast execution model
 const MAX_TOKENS = 32000; // Leave some buffer from 32K limit
+const SKIP_ACTION_DELAY_MS = 500; // Brief delay before continuing after skipping action
+const PAGE_SETTLE_DELAY_MS = 1000; // Delay for page to settle after navigation before calling schema
+const NAVIGATION_TOOLS = ['manageTabs', 'navigate']; // Tools that trigger page navigation
+const AUTO_SCHEMA_DESCRIPTION = 'Get page schema to find interactive elements'; // Description for auto-schema calls
 
 let conversationHistory = [];
 let isProcessing = false;
 let includeScreenshot = true;
-let currentPlan = null;
-let currentPlanMessage = null;
-let isAwaitingApproval = false;
-let rejectionCount = 0;
-let lastPromptData = null;
-let retryCount = 0;
-let failedStepIndex = -1;
-let executionHistory = [];
+// v3 iterative state
+let currentGoal = null; // User's original goal
+let executionHistory = []; // History of all actions taken
+let isIterating = false; // Currently in iterative execution loop
 let stopGenerationRequested = false;
 let activeStreamPort = null;
 let isAutoScrolling = false;
+let lastPromptData = null;
 
 // Available tools definition with input/output specs
 const AVAILABLE_TOOLS = [
@@ -116,34 +117,50 @@ function generateToolsPrompt() {
   ).join('\n');
 }
 
-// System prompt for agent mode
-const ORCHESTRATOR_PROMPT = `You are ChromePilot. Create browser automation plans.
+// System prompt for iterative agent mode (v3)
+const ORCHESTRATOR_PROMPT = `You are ChromePilot, a fully iterative browser automation agent.
 
-Tools: click, type, select, pressKey, scroll, navigate, manageTabs, waitFor, getSchema, getHTML
+CRITICAL: You MUST NOT create multi-step plans. You operate in an iterative loop:
+1. Evaluate the current situation (user goal, page state, previous actions)
+2. Decide ONLY the single best next action right now
+3. Execute that one action
+4. Observe the result
+5. Re-evaluate and repeat
 
-Output JSON: {"needs_steps": true/false, "steps": ["step 1", "step 2"], "message": "brief"}
+Available Tools: click, type, select, pressKey, scroll, navigate, manageTabs, waitFor, getSchema, getHTML
 
-CRITICAL RULES:
-1. Pre-Check: If user says "open [site]" (no "new tab") and URL matches → needs_steps=false
-2. Think briefly: simple tasks 1-2 sentences, never circle
-3. Page Load: After "Open tab" or "Go to URL", NEXT step MUST be "Wait for page load"
-4. Interactive Snapshot: getSchema returns simplified JSON array of interactive elements only
-   Format: [{"id": 1, "type": "input", "role": "searchbox", "label": "Search", "placeholder": "..."}, ...]
-5. Selectors: NEVER guess. Always getSchema FIRST, then reference "[from step X]" in action steps
-6. Atomic: One action per step only
-7. BE SPECIFIC: Include URLs, full text, and details in step descriptions
-8. Submit: NEVER use "Press Enter". ALWAYS click the submit button from schema (role="button")
-9. Final Step: ALWAYS end plan with "Wait for the page to load completely" after last action
-10. Selector Pattern - REQUIRED: Reference previous schema step
-   Example plan for "search YouTube for never gonna give you up":
-   - "Open a new tab with URL https://www.youtube.com"
-   - "Wait for the page to load completely"
-   - "Get page schema to find interactive elements"
-   - "Click the search input [from step 3]"
-   - "Type 'never gonna give you up' into search [from step 3]"
-   - "Click the search button [from step 3]"
-   - "Wait for the page to load completely"
-11. Known URLs: youtube.com, google.com, facebook.com, twitter.com, amazon.com`;
+Output JSON Schema:
+{
+  "needs_action": true/false,
+  "action": "single action description" OR null,
+  "reasoning": "1-2 sentence explanation only",
+  "message": "message to user",
+  "ask_user": "clarifying question" OR null
+}
+
+RULES:
+1. ONE ACTION ONLY: Never plan multiple steps ahead. Decide only the immediate next action.
+2. RE-EVALUATE FRESH: Each iteration, reassess from scratch based on latest context.
+3. ASK WHEN UNCLEAR: If the next action is ambiguous, risky, or missing details, set ask_user with a clarifying question and needs_action=false.
+4. CONVERSATION MODE: If user is just asking questions (not requesting actions), set needs_action=false and provide answer in message.
+5. TASK COMPLETE: When goal is achieved, set needs_action=false with completion message.
+6. ATOMIC ACTIONS: Each action must be a single, specific operation.
+7. BE SPECIFIC: Include exact URLs, text, and details in action descriptions. For opening tabs, ALWAYS include the full URL in the action.
+8. SCHEMA REQUIRED: After any page navigation (manageTabs, navigate), you MUST call getSchema before attempting interactions.
+9. WAIT AFTER NAVIGATION: After opening tabs or navigating, next action should be waitFor page load.
+10. OBSERVE RESULTS: Previous action outputs are provided - use them to inform next decision.
+11. CONCISE REASONING: Keep reasoning to 1-2 sentences maximum. No lengthy explanations or circular thinking.
+
+Examples of iterative decisions:
+- User: "Search YouTube for cats"
+  → Decision: {"needs_action": true, "action": "Open a new tab with URL https://www.youtube.com", "reasoning": "User wants to access YouTube in a new tab.", "message": "Opening YouTube..."}
+  → After execution, next decision: {"needs_action": true, "action": "Wait for the page to load completely", "reasoning": "Page needs to load before interaction.", "message": "Waiting for page..."}
+  → After load: {"needs_action": true, "action": "Get page schema to find interactive elements", "reasoning": "Need to identify search elements.", "message": "Analyzing page..."}
+  → After schema: {"needs_action": true, "action": "Click the search input with id 5 from schema", "reasoning": "Found search box at id 5.", "message": "Clicking search..."}
+
+CRITICAL: Keep reasoning to 1-2 sentences. Include ALL required parameters (especially URLs) in action descriptions.
+
+Known URLs: youtube.com, google.com, facebook.com, twitter.com, amazon.com`;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -265,11 +282,12 @@ async function handleSendMessage(isCorrection = false) {
   sendBtn.disabled = false;
   sendBtn.onclick = () => {
     stopGenerationRequested = true;
+    isIterating = false;
     if (activeStreamPort) {
       activeStreamPort.disconnect();
       activeStreamPort = null;
     }
-    updateStatus('Generation stopped', 'error');
+    updateStatus('Stopped', 'error');
     resetUIAfterProcessing();
   };
 
@@ -278,10 +296,6 @@ async function handleSendMessage(isCorrection = false) {
   if (welcomeMessage) {
     welcomeMessage.remove();
   }
-  
-  // Remove any retry/continue buttons from previous failed plans
-  const existingButtons = chatContainer.querySelectorAll('.plan-btn-retry, .plan-btn-continue');
-  existingButtons.forEach(btn => btn.remove());
 
   // Add user message to UI (no loader)
   addMessageToUI('user', message);
@@ -289,31 +303,34 @@ async function handleSendMessage(isCorrection = false) {
   autoResizeTextarea();
 
   try {
+    // Reset state for new goal - only set goal if not already iterating (to preserve original goal during clarifications)
+    stopGenerationRequested = false;
+    if (!isIterating) {
+      currentGoal = message;
+    }
+    
     let tabData = { screenshot: null, html: '', url: '', title: '' };
     
-    // Only capture if screenshot is enabled and not a correction
-    if (!isCorrection && includeScreenshot) {
+    // Capture page state if screenshot is enabled
+    if (includeScreenshot) {
       updateStatus('Capturing page...');
       tabData = await captureCurrentTab();
       
       if (tabData.error && includeScreenshot) {
         updateStatus('Warning: ' + tabData.error, 'error');
       }
-    } else if (isCorrection && lastPromptData) {
-      // Reuse previous capture data for corrections
-      tabData = lastPromptData.tabData;
     }
 
-    updateStatus('Generating plan...');
+    updateStatus('Thinking...');
 
     // Prepare message for Ollama
     const { prompt, imageBase64 } = await prepareOllamaRequest(
       message, 
       tabData, 
-      isCorrection
+      false
     );
 
-    // Store for potential correction
+    // Store for potential use
     lastPromptData = { tabData, originalMessage: message };
 
     // Check token count estimate
@@ -328,11 +345,12 @@ async function handleSendMessage(isCorrection = false) {
     // Send to Ollama with streaming and get agent response
     const agentResponse = await streamOllamaResponse(prompt, imageBase64);
 
-    // Parse and display agent response
+    // Parse and display agent response (will start iteration if action needed)
     await handleAgentResponse(agentResponse);
 
     updateStatus('Ready');
-    resetUIAfterProcessing();
+    // Note: Don't call resetUIAfterProcessing here - it will be called by handleAgentResponse
+    // based on whether iteration continues or input should be re-enabled
   } catch (error) {
     console.error('Error:', error);
     
@@ -351,6 +369,20 @@ function resetUIAfterProcessing() {
   sendBtn.style.background = '';
   sendBtn.onclick = null;
   userInput.focus();
+}
+
+// Helper function to enable user input consistently
+function enableUserInput(placeholder = 'Ask me anything about this page...', focus = true) {
+  isProcessing = false;
+  sendBtn.disabled = false;
+  userInput.disabled = false;
+  sendBtn.textContent = 'Send';
+  sendBtn.style.background = '';
+  sendBtn.onclick = null;
+  userInput.placeholder = placeholder;
+  if (focus) {
+    userInput.focus();
+  }
 }
 
 async function captureCurrentTab() {
@@ -373,8 +405,6 @@ async function prepareOllamaRequest(userMessage, tabData, isCorrection = false) 
   }
   
   // Get previous conversation messages (user prompts and bot responses only, no HTML/screenshots)
-  // For 2nd prompt: Should have [user1, bot1] 
-  // For 3rd prompt: Should have [user1, bot1, user2, bot2]
   // Keep last 4 messages (2 exchanges) to avoid token bloat
   const recentHistory = conversationHistory.slice(-4).filter(msg => 
     msg.role === 'user' || msg.role === 'assistant'
@@ -388,22 +418,15 @@ async function prepareOllamaRequest(userMessage, tabData, isCorrection = false) 
       if (msg.role === 'user') {
         conversationContext += `User: ${msg.content}\n`;
       } else if (msg.role === 'assistant') {
-        // Only include message text, not plans/steps
         conversationContext += `Assistant: ${msg.content}\n`;
       }
     });
   }
   
-  // Add correction context if applicable
-  let correctionNote = '';
-  if (isCorrection && currentPlan && currentPlanMessage) {
-    correctionNote = `\n\nPrevious plan was rejected. Previous message: "${currentPlanMessage}"\nPrevious plan: ${JSON.stringify(currentPlan, null, 2)}\n\nUser's correction: ${userMessage}\n\nPlease create a NEW plan based on this correction.`;
-  }
-  
-  // Build final prompt: System prompt + current context (HTML/screenshot) + previous messages + current question
+  // Build final prompt: System prompt + current context + previous messages + current question
   const prompt = contextInfo 
-    ? `${ORCHESTRATOR_PROMPT}\n\n${contextInfo}${conversationContext}${correctionNote}\n\nUser question: ${isCorrection && lastPromptData ? lastPromptData.originalMessage : userMessage}`
-    : `${ORCHESTRATOR_PROMPT}${conversationContext}${correctionNote}\n\nUser question: ${isCorrection && lastPromptData ? lastPromptData.originalMessage : userMessage}`;
+    ? `${ORCHESTRATOR_PROMPT}\n\n${contextInfo}${conversationContext}\n\nUser question: ${userMessage}`
+    : `${ORCHESTRATOR_PROMPT}${conversationContext}\n\nUser question: ${userMessage}`;
 
   // Convert screenshot to base64 (remove data URL prefix) if enabled
   // Only the CURRENT screenshot is sent, not historical images
@@ -442,43 +465,172 @@ async function handleAgentResponse(responseText) {
     // Parse JSON response
     const response = JSON.parse(cleanText);
     
-    // Store current plan (use steps from new format)
-    currentPlan = response.steps || [];
-    currentPlanMessage = response.message || '';
-    
     // Display assistant message
     const assistantMessageDiv = document.createElement('div');
     assistantMessageDiv.className = 'message assistant-message';
     
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    contentDiv.innerHTML = marked.parse(response.message);
+    contentDiv.innerHTML = marked.parse(response.message || '');
     
     assistantMessageDiv.appendChild(contentDiv);
     
-    // If needs steps, show plan UI
-    if (response.needs_steps && response.steps && response.steps.length > 0) {
-      const planContainer = createPlanUI(response.steps);
-      assistantMessageDiv.appendChild(planContainer);
-      isAwaitingApproval = true;
-    } else {
-      // No plan needed, conversation continues normally
-      isProcessing = false;
-      sendBtn.disabled = false;
-      userInput.disabled = false;
-      userInput.focus();
+    // Check if agent is asking for clarification
+    if (response.ask_user) {
+      // Display clarification question
+      const questionDiv = document.createElement('div');
+      questionDiv.className = 'clarification-question';
+      questionDiv.style.background = '#fff3cd';
+      questionDiv.style.padding = '12px';
+      questionDiv.style.marginTop = '10px';
+      questionDiv.style.borderRadius = '4px';
+      questionDiv.style.borderLeft = '4px solid #ffc107';
+      questionDiv.innerHTML = `<strong>❓ Question:</strong> ${response.ask_user}`;
+      assistantMessageDiv.appendChild(questionDiv);
+      
+      chatContainer.appendChild(assistantMessageDiv);
+      scrollToBottom();
+      
+      // Add to history
+      conversationHistory.push({
+        role: 'assistant',
+        content: response.message || response.ask_user
+      });
+      saveConversationHistory();
+      
+      // Re-enable input for user response
+      enableUserInput('Your answer...');
+    } 
+    // Check if agent wants to take an action
+    else if (response.needs_action && response.action) {
+      // Show reasoning if provided
+      if (response.reasoning) {
+        const reasoningDiv = document.createElement('div');
+        reasoningDiv.className = 'action-reasoning';
+        reasoningDiv.style.fontSize = '0.9em';
+        reasoningDiv.style.color = '#666';
+        reasoningDiv.style.marginTop = '8px';
+        reasoningDiv.style.fontStyle = 'italic';
+        reasoningDiv.innerHTML = `💭 ${response.reasoning}`;
+        assistantMessageDiv.appendChild(reasoningDiv);
+      }
+      
+      // Show the action that will be executed
+      const actionDiv = document.createElement('div');
+      actionDiv.className = 'next-action';
+      actionDiv.style.background = '#e3f2fd';
+      actionDiv.style.padding = '12px';
+      actionDiv.style.marginTop = '10px';
+      actionDiv.style.borderRadius = '4px';
+      actionDiv.style.borderLeft = '4px solid #2196F3';
+      actionDiv.innerHTML = `<strong>⚡ Next Action:</strong> ${response.action}`;
+      actionDiv.dataset.action = response.action;
+      assistantMessageDiv.appendChild(actionDiv);
+      
+      // Add approval buttons
+      const approvalDiv = document.createElement('div');
+      approvalDiv.className = 'action-approval';
+      approvalDiv.style.marginTop = '10px';
+      approvalDiv.style.display = 'flex';
+      approvalDiv.style.gap = '10px';
+      
+      // Helper to disable all approval buttons
+      const disableApprovalButtons = (execBtn, skipBtnRef, stopBtnRef) => {
+        execBtn.disabled = true;
+        skipBtnRef.disabled = true;
+        stopBtnRef.disabled = true;
+      };
+      
+      const executeBtn = document.createElement('button');
+      executeBtn.className = 'plan-btn plan-btn-approve';
+      executeBtn.style.flex = '1';
+      executeBtn.innerHTML = '✓ Execute';
+      
+      const skipBtn = document.createElement('button');
+      skipBtn.className = 'plan-btn';
+      skipBtn.style.background = '#FF9800';
+      skipBtn.style.flex = '1';
+      skipBtn.innerHTML = '⏭️ Skip';
+      
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'plan-btn plan-btn-reject';
+      stopBtn.style.flex = '1';
+      stopBtn.innerHTML = '⏹️ Stop';
+      
+      // Set up click handlers with button references
+      executeBtn.onclick = async () => {
+        disableApprovalButtons(executeBtn, skipBtn, stopBtn);
+        
+        // Execute the action and continue iteration
+        await executeIterativeAction(response.action, actionDiv);
+      };
+      
+      skipBtn.onclick = async () => {
+        disableApprovalButtons(executeBtn, skipBtn, stopBtn);
+        
+        // Mark as skipped
+        actionDiv.style.borderLeftColor = '#FF9800';
+        actionDiv.innerHTML = `<strong>⏭️ Skipped:</strong> ${response.action}`;
+        
+        // Add to execution history as skipped
+        executionHistory.push({
+          description: response.action,
+          tool: 'skipped',
+          inputs: {},
+          outputs: { success: false, skipped: true }
+        });
+        
+        // Continue iteration to get next action
+        await new Promise(resolve => setTimeout(resolve, SKIP_ACTION_DELAY_MS));
+        await continueIteration();
+      };
+      
+      stopBtn.onclick = () => {
+        disableApprovalButtons(executeBtn, skipBtn, stopBtn);
+        
+        // Mark as stopped
+        actionDiv.style.borderLeftColor = '#f44336';
+        actionDiv.innerHTML = `<strong>⏹️ Stopped:</strong> Task halted by user`;
+        
+        // Stop iteration
+        isIterating = false;
+        enableUserInput('Ask me anything about this page...');
+        updateStatus('Stopped by user', 'success');
+      };
+      
+      approvalDiv.appendChild(executeBtn);
+      approvalDiv.appendChild(skipBtn);
+      approvalDiv.appendChild(stopBtn);
+      actionDiv.appendChild(approvalDiv);
+      
+      chatContainer.appendChild(assistantMessageDiv);
+      scrollToBottom();
+      
+      // Add to history
+      conversationHistory.push({
+        role: 'assistant',
+        content: response.message || response.action
+      });
+      saveConversationHistory();
+      
+      // Note: Execution happens only when user clicks Execute button
+    } 
+    // No action needed (conversation mode or task complete)
+    else {
+      chatContainer.appendChild(assistantMessageDiv);
+      scrollToBottom();
+      
+      // Add to history
+      conversationHistory.push({
+        role: 'assistant',
+        content: response.message
+      });
+      saveConversationHistory();
+      
+      // Re-enable input
+      enableUserInput();
     }
     
-    chatContainer.appendChild(assistantMessageDiv);
-    scrollToBottom();
-    
-    // Add to history - store only the message text, not steps/plans
-    conversationHistory.push({
-      role: 'assistant',
-      content: response.message
-    });
-    
-    saveConversationHistory();
   } catch (error) {
     console.error('Error parsing agent response:', error);
     console.error('Response text:', responseText);
@@ -875,6 +1027,225 @@ async function handlePlanRejection(planContainer) {
     userInput.disabled = false;
     userInput.placeholder = 'Ask me anything about this page...';
     userInput.focus();
+  }
+}
+
+// Execute a single action in iterative mode and continue the loop
+async function executeIterativeAction(actionDescription, actionDiv) {
+  console.log('[Iterative] Executing action:', actionDescription);
+  
+  isIterating = true;
+  
+  try {
+    // Update action UI to show executing state
+    actionDiv.style.borderLeftColor = '#2196F3';
+    actionDiv.innerHTML = `<strong>⚡ Executing:</strong> ${actionDescription} <span style="color: #2196F3;">⚙️</span>`;
+    
+    updateStatus('Executing action...');
+    
+    // Use the executor to translate action to tool call
+    const execution = await executeStep(actionDescription, executionHistory.length, executionHistory);
+    
+    // Add to execution history
+    executionHistory.push(execution);
+    
+    // Update action UI with result
+    actionDiv.style.borderLeftColor = '#4CAF50';
+    actionDiv.innerHTML = `
+      <strong>✓ Completed:</strong> ${actionDescription}
+      <div style="font-size: 0.85em; margin-top: 6px; color: #666;">
+        Tool: <code>${execution.tool}</code> | 
+        ${execution.outputs.success ? '✓ Success' : '✗ Failed'}
+      </div>
+    `;
+    
+    // Create output details (collapsible)
+    const detailsDiv = document.createElement('details');
+    detailsDiv.style.marginTop = '8px';
+    detailsDiv.style.fontSize = '0.85em';
+    
+    const summary = document.createElement('summary');
+    summary.textContent = 'View Details';
+    summary.style.cursor = 'pointer';
+    summary.style.color = '#2196F3';
+    
+    const detailsContent = document.createElement('div');
+    detailsContent.style.marginTop = '6px';
+    detailsContent.style.padding = '8px';
+    detailsContent.style.background = '#f5f5f5';
+    detailsContent.style.borderRadius = '4px';
+    detailsContent.innerHTML = `
+      <div><strong>Inputs:</strong> <pre style="margin: 4px 0; white-space: pre-wrap;">${JSON.stringify(execution.inputs, null, 2)}</pre></div>
+      <div><strong>Outputs:</strong> <pre style="margin: 4px 0; white-space: pre-wrap;">${JSON.stringify(execution.outputs, null, 2)}</pre></div>
+    `;
+    
+    detailsDiv.appendChild(summary);
+    detailsDiv.appendChild(detailsContent);
+    actionDiv.appendChild(detailsDiv);
+    
+    scrollToBottom();
+    
+    // Check if we need to auto-call getSchema after page navigation
+    const needsSchema = NAVIGATION_TOOLS.includes(execution.tool) && execution.outputs.success;
+    
+    if (needsSchema) {
+      // Automatically call getSchema after successful page navigation
+      console.log('[Iterative] Auto-calling getSchema after page navigation');
+      
+      // Small delay to let page settle
+      await new Promise(resolve => setTimeout(resolve, PAGE_SETTLE_DELAY_MS));
+      
+      try {
+        // Call getSchema automatically
+        const schemaExecution = await executeStep(AUTO_SCHEMA_DESCRIPTION, executionHistory.length, executionHistory);
+        executionHistory.push(schemaExecution);
+        
+        // Show schema result in UI
+        const schemaDiv = document.createElement('div');
+        schemaDiv.className = 'next-action';
+        schemaDiv.style.background = '#f0f4ff';
+        schemaDiv.style.padding = '10px';
+        schemaDiv.style.marginTop = '8px';
+        schemaDiv.style.borderRadius = '4px';
+        schemaDiv.style.borderLeft = '4px solid #6B7FD7';
+        schemaDiv.style.fontSize = '0.9em';
+        
+        const elementsFound = schemaExecution.outputs.schema ? schemaExecution.outputs.schema.length : 0;
+        schemaDiv.innerHTML = `
+          <strong>🔍 Auto Schema:</strong> Found ${elementsFound} interactive elements on new page
+        `;
+        
+        chatContainer.appendChild(schemaDiv);
+        scrollToBottom();
+        
+        console.log(`[Iterative] Auto-schema found ${elementsFound} elements`);
+      } catch (schemaError) {
+        console.error('[Iterative] Auto-schema failed:', schemaError);
+        // Continue anyway - agent can decide to call schema manually if needed
+      }
+    }
+    
+    // Small delay before next iteration
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Continue iteration - ask agent for next action
+    await continueIteration();
+    
+  } catch (error) {
+    console.error('[Iterative] Action execution failed:', error);
+    
+    // Update action UI to show failure
+    actionDiv.style.borderLeftColor = '#f44336';
+    actionDiv.innerHTML = `
+      <strong>✗ Failed:</strong> ${actionDescription}
+      <div style="color: #f44336; margin-top: 6px; font-size: 0.9em;">
+        Error: ${error.message}
+      </div>
+    `;
+    
+    scrollToBottom();
+    
+    // Add failure to execution history
+    executionHistory.push({
+      description: actionDescription,
+      tool: 'error',
+      inputs: {},
+      outputs: { success: false, error: error.message }
+    });
+    
+    // Still continue iteration - let agent decide how to handle the failure
+    await new Promise(resolve => setTimeout(resolve, 800));
+    await continueIteration();
+  }
+}
+
+// Continue the iterative loop - ask agent for next action based on current state
+async function continueIteration() {
+  if (stopGenerationRequested || !isIterating) {
+    isIterating = false;
+    isProcessing = false;
+    sendBtn.disabled = false;
+    userInput.disabled = false;
+    updateStatus('Stopped');
+    return;
+  }
+  
+  try {
+    updateStatus('Re-evaluating...');
+    
+    // Build context with execution history
+    let executionContext = '';
+    
+    // Find the most recent getSchema result
+    let mostRecentSchema = null;
+    for (let i = executionHistory.length - 1; i >= 0; i--) {
+      if (executionHistory[i].tool === 'getSchema' && executionHistory[i].outputs.schema) {
+        mostRecentSchema = executionHistory[i].outputs.schema;
+        break;
+      }
+    }
+    
+    // Include the most recent schema at the top of context if available
+    if (mostRecentSchema) {
+      executionContext += '\n\nCurrent Page Schema (Interactive Elements):\n';
+      executionContext += JSON.stringify(mostRecentSchema, null, 2);
+      executionContext += '\n';
+    }
+    
+    if (executionHistory.length > 0) {
+      executionContext += '\n\nPrevious actions taken:\n';
+      executionHistory.forEach((exec, i) => {
+        executionContext += `${i + 1}. ${exec.description}\n`;
+        executionContext += `   Tool: ${exec.tool}, Success: ${exec.outputs.success || false}\n`;
+        
+        // Include relevant outputs (skip full schema dumps in history since we show most recent at top)
+        if (exec.tool === 'getSchema' && exec.outputs.schema) {
+          executionContext += `   Found ${exec.outputs.schema.length} interactive elements\n`;
+        } else {
+          const outputStr = JSON.stringify(exec.outputs);
+          executionContext += `   Result: ${outputStr.length > 200 ? outputStr.substring(0, 200) + '...' : outputStr}\n`;
+        }
+      });
+    }
+    
+    // Capture current page state for re-evaluation
+    const currentState = await captureCurrentTab();
+    
+    // Build iteration prompt - ensure currentGoal is defined
+    const goalText = currentGoal || 'the user request';
+    const { prompt, imageBase64 } = await prepareOllamaRequest(
+      `[Continue iterating on goal: ${goalText}]\n\nRe-evaluate the current situation based on the page state and previous actions. Decide the single next action, or determine if the goal is complete.${executionContext}`,
+      currentState,
+      false
+    );
+    
+    // Show thinking loader
+    const thinkingLoader = showCenteredLoader('Deciding next action...');
+    
+    try {
+      // Get next decision from agent
+      const agentResponse = await streamOllamaResponse(prompt, imageBase64);
+      
+      // Remove loader before handling response
+      removeCenteredLoader();
+      
+      // Handle the response (will execute next action if needed, or complete)
+      await handleAgentResponse(agentResponse);
+    } catch (error) {
+      // Ensure loader is removed on error
+      removeCenteredLoader();
+      throw error;
+    }
+    
+  } catch (error) {
+    console.error('[Iterative] Error during iteration:', error);
+    addErrorToUI('Error during iteration: ' + error.message);
+    
+    isIterating = false;
+    isProcessing = false;
+    sendBtn.disabled = false;
+    userInput.disabled = false;
+    updateStatus('Error', 'error');
   }
 }
 
@@ -1429,14 +1800,10 @@ function handleReset() {
   if (confirm('Are you sure you want to reset the conversation?')) {
     // Clear all conversation and execution state
     conversationHistory = [];
-    currentPlan = null;
-    currentPlanMessage = null;
-    isAwaitingApproval = false;
-    rejectionCount = 0;
-    lastPromptData = null;
-    retryCount = 0;
-    failedStepIndex = -1;
     executionHistory = [];
+    currentGoal = null;
+    isIterating = false;
+    lastPromptData = null;
     stopGenerationRequested = false;
     isAutoScrolling = true; // Default to auto-scroll on reset
     
@@ -1450,8 +1817,9 @@ function handleReset() {
     chatContainer.innerHTML = `
       <div class="welcome-message">
         <img src="icon.png" alt="ChromePilot" class="welcome-logo">
-        <h2>Welcome to ChromePilot</h2>
-        <p>I can see your screen and help you navigate the web. Ask me anything!</p>
+        <h2>Welcome to ChromePilot v3</h2>
+        <p>I'm a fully iterative agent. I'll decide and execute one action at a time, adapting based on results.</p>
+        <p>Ask me to do something, and I'll work through it step by step!</p>
       </div>
     `;
     

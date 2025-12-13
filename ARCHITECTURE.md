@@ -2,117 +2,197 @@
 
 [← Back to README](README.md)
 
-## Two-LLM System
+## Iterative Two-LLM System (v3)
 
-ChromePilot uses a dual-LLM architecture to separate high-level reasoning from low-level execution:
+ChromePilot v3 uses a dual-LLM architecture with a fully iterative execution model:
 
-### Orchestrator: qwen3-vl-32k (Reasoning Model)
-- **Role**: High-level task planning
-- **Input**: Screenshot + HTML + User request
-- **Output**: Array of plain English step descriptions
+### Decision Agent: qwen3-vl-32k (Reasoning Model)
+- **Role**: Iterative decision-making
+- **Input**: Screenshot + Page context + User goal + Execution history
+- **Output**: Single next action OR clarifying question OR completion message
 - **Example Output**:
   ```json
   {
-    "needs_steps": true,
-    "steps": [
-      "Open a new tab with YouTube.com",
-      "Click on the search box visible in the page",
-      "Type 'cats' into the search box"
-    ],
-    "message": "I'll open YouTube and search for cats."
+    "needs_action": true,
+    "action": "Open a new tab with URL https://www.youtube.com",
+    "reasoning": "Starting by navigating to YouTube as requested",
+    "message": "Opening YouTube...",
+    "ask_user": null
   }
   ```
 
 ### Executor: llama3.1-8b-32k:latest (Execution Model)
-- **Role**: Translate steps into tool calls
-- **Input**: Step description + Execution history (previous inputs/outputs)
+- **Role**: Translate single action into tool call
+- **Input**: Action description + Execution history (previous inputs/outputs)
 - **Output**: Tool name + Parameters
 - **Example**:
-  - Input: "Click the first link from the search results"
-  - Has access to: Previous step outputs showing search results
-  - Output: `{ "tool": "clickElement", "inputs": { "selector": ".result:first-child a" } }`
+  - Input: "Open a new tab with URL https://www.youtube.com"
+  - Output: `{ "tool": "manageTabs", "inputs": {"action": "open", "url": "https://www.youtube.com"} }`
 
-## Benefits of This Architecture
+## Benefits of Iterative Architecture
 
-### 1. Context Propagation
-Steps can reference previous outputs:
-- "Open the URL shown in the previous step"
-- "Click the element that was highlighted"
-- "Use the tab ID from step 1"
+### 1. Dynamic Adaptation
+- No commitment to a fixed plan
+- Each decision uses the most current information
+- Can change strategy based on what actually happens
 
-### 2. Separation of Concerns
-- **Orchestrator**: Focuses on "what to do" without worrying about tool syntax
-- **Executor**: Focuses on "how to do it" with full execution context
+### 2. Error Recovery
+- Failures are incorporated into next decision
+- Agent can try alternative approaches
+- No need to restart entire plan
 
-### 3. Flexibility
-- Steps are human-readable plain English
-- Easy to debug (see exactly what the orchestrator planned)
-- Executor can adapt to different page states using execution history
+### 3. User Collaboration
+- Can ask clarifying questions mid-execution
+- User can provide guidance at any point
+- Natural conversational flow
 
-### 4. Efficiency
-- Orchestrator runs once with vision (expensive)
-- Executor runs per-step without vision (fast, llama3.1-8b-32k:latest is lightweight)
+### 4. Simpler Mental Model
+- One action at a time, easy to understand
+- Clear cause and effect
+- Transparent decision-making process
+
+### 5. Handles Uncertainty
+- Doesn't need to predict all future states
+- Responds to actual page states, not assumptions
+- More robust to unexpected changes
 
 ## Execution Flow
 
 ```
 User Request
     ↓
-[Orchestrator: qwen3-vl-32k]
+[Decision Agent: qwen3-vl-32k]
     ↓
-Plain English Steps
+Single Action Decision
     ↓
-User Approves Plan
-    ↓
-For each step:
-    ↓
-[Executor: llama3.1-8b-32k:latest] ← Previous step outputs
+[Executor: llama3.1-8b-32k:latest] ← Previous action outputs
     ↓
 Tool Call (name + params)
     ↓
 Execute Tool
     ↓
-Store Output
+Capture Result
     ↓
-Next Step
+[Decision Agent: Re-evaluate]
+    ↓
+Next Action OR Ask User OR Complete
+    ↓
+Repeat until goal achieved
 ```
 
-## Example: Multi-Step Task
+## Example: Iterative Task Execution
 
-**User**: "Search for cats on Google"
+**User**: "Search for cats on YouTube"
 
-### Orchestrator Output:
-```json
-{
-  "needs_steps": true,
-  "steps": [
-    "Open a new tab with Google.com",
-    "Click on the search input box",
-    "Type 'cats' in the search box",
-    "Click the search button or press Enter"
-  ],
-  "message": "I'll search for cats on Google for you."
-}
-```
+### Iteration 1:
+- **Decision Agent sees**: User request, current page
+- **Decision**: "Open a new tab with URL https://www.youtube.com"
+- **Executor translates**: `manageTabs(action: "open", url: "https://www.youtube.com")`
+- **Result**: Tab opened, tabId returned
 
-### Execution:
+### Iteration 2:
+- **Decision Agent sees**: User request, execution history (tab opened), current page screenshot
+- **Decision**: "Wait for the page to load completely"
+- **Executor translates**: `waitFor(waitType: "navigation")`
+- **Result**: Page loaded successfully
 
-**Step 1**: "Open a new tab with Google.com"
-- Executor receives: No previous context
-- Executor output: `{ "tool": "openTab", "inputs": { "url": "https://www.google.com" } }`
-- Tool execution: Opens tab
-- Stored output: `{ "tabId": 123, "url": "https://www.google.com" }`
+### Iteration 3:
+- **Decision Agent sees**: YouTube homepage screenshot
+- **Decision**: "Get page schema to find interactive elements"
+- **Executor translates**: `getSchema()`
+- **Result**: Array of interactive elements including search box (id: 5)
 
-**Step 2**: "Click on the search input box"
-- Executor receives: Step 1 outputs (tabId: 123)
-- Executor output: `{ "tool": "clickElement", "inputs": { "selector": "input[name='q']" } }`
-- Tool execution: Clicks element
-- Stored output: `{ "success": true, "elementText": "" }`
+### Iteration 4:
+- **Decision Agent sees**: Schema with search box identified
+- **Decision**: "Click the search input with id 5 from schema"
+- **Executor translates**: `click(a11yId: 5)`
+- **Result**: Search box focused
 
-**Step 3**: "Type 'cats' in the search box"
-- Executor receives: Step 1 & 2 outputs
-- Executor can see the search box was successfully clicked
-- And so on...
+### Iteration 5:
+- **Decision Agent sees**: Search box is now active
+- **Decision**: "Type 'cats' into the search box"
+- **Executor translates**: `type(a11yId: 5, text: "cats")`
+- **Result**: Text entered
+
+### Iteration 6:
+- **Decision Agent sees**: Search text entered, schema includes search button
+- **Decision**: "Click the search button with id 8 from schema"
+- **Executor translates**: `click(a11yId: 8)`
+- **Result**: Search submitted, navigation started
+
+### Iteration 7:
+- **Decision Agent sees**: Search results page loading
+- **Decision**: "Wait for the page to load completely"
+- **Executor translates**: `waitFor(waitType: "navigation")`
+- **Result**: Search results displayed
+
+### Iteration 8:
+- **Decision Agent sees**: Search results for "cats" visible on screen
+- **Decision**: Goal achieved!
+- **Output**: 
+  ```json
+  {
+    "needs_action": false,
+    "message": "✓ I've successfully searched for cats on YouTube. The search results are now displayed.",
+    "ask_user": null
+  }
+  ```
+
+## Handling Clarification and Errors
+
+### Asking for Clarification
+
+When the agent encounters ambiguity, it asks the user:
+
+**Example - Ambiguous Request**:
+- **User**: "Click the button"
+- **Agent sees**: Multiple buttons on page
+- **Decision**:
+  ```json
+  {
+    "needs_action": false,
+    "message": "I see several buttons on this page.",
+    "ask_user": "Which button would you like me to click? I can see: 'Submit', 'Cancel', 'Learn More', and 'Sign Up'."
+  }
+  ```
+
+**Example - Missing Information**:
+- **User**: "Fill out the form"
+- **Agent sees**: Form with name, email, phone fields
+- **Decision**:
+  ```json
+  {
+    "needs_action": false,
+    "message": "I found a form with several fields.",
+    "ask_user": "What information should I enter in the form? I see fields for name, email, and phone number."
+  }
+  ```
+
+### Handling Failures
+
+When an action fails, the agent incorporates the failure into its next decision:
+
+**Example - Element Not Found**:
+- **Iteration N**: Try to click button with id 5
+- **Result**: Error - element not found
+- **Iteration N+1**:
+  - **Decision Agent sees**: Previous action failed, current page state
+  - **Decision**: "Get page schema again to find the current elements"
+  - **Agent adapts**: Refreshes understanding of page, tries alternative approach
+
+**Example - Navigation Error**:
+- **Iteration N**: Navigate to URL
+- **Result**: Error - page not found
+- **Iteration N+1**:
+  - **Decision Agent sees**: Navigation failed with 404 error
+  - **Decision**:
+    ```json
+    {
+      "needs_action": false,
+      "message": "The URL couldn't be loaded (404 error).",
+      "ask_user": "Would you like me to try a different URL or search for the site instead?"
+    }
+    ```
 
 ## Tool Definition Format
 
@@ -293,32 +373,38 @@ The executor uses **partial string matching** to find elements:
 - Step: "Click Rick Astley video" → Extract: "Rick Astley" → Find: label contains "Rick Astley"
 
 ### Context Management
-- **Screenshot Capture**: Static capture at start of each message (if toggle enabled)
-  - Captured once per user message and sent to orchestrator (vision model)
-  - NOT available as a tool since executor model (llama3.1-8b-32k:latest) is text-only
-  - Only the CURRENT screenshot is sent, not historical ones
+- **Screenshot Capture**: Re-captured before each decision iteration (if toggle enabled)
+  - Sent to decision agent (vision model) for re-evaluation
+  - NOT available as a tool since executor model is text-only
+  - Ensures decisions are based on current page state
   
 - **HTML Capture**: 
-  - Static capture at start if toggle enabled (sent to orchestrator)
-  - Also available as `getHTML` tool during execution (text-based, works with executor)
+  - Can be obtained during execution via `getHTML` tool
+  - Text-based, works with executor model
   - Can target specific elements with CSS selector
   
-- **No Redundancy**: Previous screenshots/HTML are NOT carried in conversation history
+- **Execution History**: All previous actions and results are included in context
+  - Decision agent sees: action description, tool used, success/failure, outputs
+  - Enables learning from past attempts
+  - Helps avoid repeating failed approaches
 
 ## Implementation Details
 
-### sidebar.js
-- `ORCHESTRATOR_PROMPT`: System prompt for plan generation
-- `executeStep()`: Calls executor model with full history
+### sidebar.js (v3 Changes)
+- `ORCHESTRATOR_PROMPT`: System prompt enforcing single-action decisions
+- `handleAgentResponse()`: Processes iterative response (action, clarification, or completion)
+- `executeIterativeAction()`: Executes single action and triggers next iteration
+- `continueIteration()`: Re-evaluates situation and gets next decision
+- `executeStep()`: Calls executor model to translate action to tool call
 - `executeToolCall()`: Actually runs the tool
-- `handlePlanApproval()`: Manages execution loop with history tracking
 
 ### background.js
-- `handleStreamOllama()`: Streams orchestrator responses
+- `handleStreamOllama()`: Streams decision agent responses
 - `handleExecuteWithModel()`: Non-streaming executor calls
 
-### UI
-- Shows plain English steps (easy to understand)
-- Displays execution status per step
-- Shows tool calls and outputs after execution
-- Collapsible for clean interface
+### UI (v3 Changes)
+- Shows single action at a time with execution status
+- Displays clarification questions when agent is uncertain
+- Shows collapsible action details (inputs/outputs)
+- Real-time status updates during iteration
+- Stop button to halt iteration at any point
