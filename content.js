@@ -643,6 +643,16 @@ function computeAccessibleName(el) {
   const placeholder = el.getAttribute("placeholder");
   if (placeholder) return placeholder.trim();
 
+  // title attribute
+  const title = el.getAttribute("title");
+  if (title) return title.trim();
+
+  // name attribute for inputs (fallback)
+  const name = el.getAttribute("name");
+  if (name && el.tagName.toLowerCase() === 'input') {
+    return name.trim();
+  }
+
   // text content for buttons/links
   const role = computeRole(el);
   if (role === "button" || role === "link") {
@@ -711,7 +721,15 @@ function extractAccessibilityTree() {
     // This reduces noise from ~387 elements to ~100-150 meaningful ones
     const label = name || textContent || null;
     const placeholder = el.placeholder || null;
-    const hasIdentification = label || placeholder;
+    
+    // Special handling for important input types - always include search boxes and text inputs
+    const tag = el.tagName.toLowerCase();
+    const inputType = el.type ? el.type.toLowerCase() : '';
+    const isImportantInput = (tag === 'input' && ['search', 'text', 'email', 'password', 'tel', 'url'].includes(inputType)) ||
+                             tag === 'textarea' ||
+                             (role === 'searchbox' || role === 'textbox' || role === 'combobox');
+    
+    const hasIdentification = label || placeholder || isImportantInput;
     
     if (!hasIdentification) {
       // Skip elements with no label, placeholder, or text
